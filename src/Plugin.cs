@@ -3147,6 +3147,12 @@ namespace DSH.Foreseeker
                 {
                     SimState.SelfTest();
                 }
+
+                // Apply-then-rollback self-test.
+                if (IsPressed(input, KeyCode.F6))
+                {
+                    SimState.ApplyTest();
+                }
             }
             catch (Exception ex)
             {

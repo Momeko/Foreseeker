@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text;
 using Assets.Code.Combat;
 using Assets.Code.Math;
+using Assets.Code.Skill;
 using Assets.Code.Utils;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -285,6 +286,197 @@ namespace DSH.Foreseeker
             }
 
             Clear();
+        }
+
+        // ---------------------------------------------------------------- apply
+
+        /// <summary>
+        /// Takes a real pre-rolled result for the current actor, applies its damage to the live
+        /// target, checks the change is visible, then rolls the whole battle back.
+        /// Logs APPTEST.
+        /// </summary>
+        internal static void ApplyTest()
+        {
+            object battle = Battle;
+            if (battle == null)
+            {
+                Log("APPTEST skip: no battle");
+                return;
+            }
+
+            string skillId;
+            uint targetGuid;
+            float damage;
+            object target;
+            if (!TryFirstCandidate(battle, out skillId, out targetGuid, out damage, out target))
+            {
+                Log("APPTEST skip: no candidate result");
+                return;
+            }
+
+            if (!Capture())
+            {
+                Log("APPTEST skip: capture failed");
+                return;
+            }
+
+            int cleanBefore = Mismatches().Count;
+            FieldInfo hpField = FindField(target, "m_Hp");
+            float hpBefore = hpField == null ? float.NaN : Convert.ToSingle(hpField.GetValue(target));
+
+            ApplyDamage(target, damage);
+
+            float hpAfter = hpField == null ? float.NaN : Convert.ToSingle(hpField.GetValue(target));
+            int afterApply = Mismatches().Count;
+
+            Restore();
+            int afterRestore = Mismatches().Count;
+
+            Log("APPTEST skill=" + skillId
+                + " target=" + ActorLabel(target)
+                + " dmg=" + damage.ToString("F1")
+                + " hp=" + hpBefore.ToString("F1") + "->" + hpAfter.ToString("F1")
+                + " cleanBefore=" + (cleanBefore == 0)
+                + " applied=" + (afterApply > 0)
+                + " restored=" + (afterRestore == 0)
+                + " remaining=" + afterRestore);
+
+            Clear();
+        }
+
+        internal static void ApplyDamage(object actor, float damage)
+        {
+            if (actor == null || damage <= 0f)
+            {
+                return;
+            }
+
+            FieldInfo hpField = FindField(actor, "m_Hp");
+            if (hpField == null)
+            {
+                return;
+            }
+
+            float current = Convert.ToSingle(hpField.GetValue(actor));
+            hpField.SetValue(actor, Math.Max(0f, current - damage));
+        }
+
+        private static bool TryFirstCandidate(object battle, out string skillId, out uint targetGuid,
+                                              out float damage, out object target)
+        {
+            skillId = null;
+            targetGuid = 0;
+            damage = 0f;
+            target = null;
+
+            object teams = GetMember(battle, "m_BattleTeams");
+            uint actorGuid = ToUInt(GetMember(battle, "CurrentActorGuid"));
+            object actor = Invoke(teams, "GetActorFromActorGuid", actorGuid);
+            if (actor == null)
+            {
+                return false;
+            }
+
+            object controller = GetMember(actor, "Controller") ?? GetMember(actor, "m_ActorController");
+            var entries = Invoke(controller, "GetValidSkillTargetEntries", null) as IEnumerable;
+            if (entries == null)
+            {
+                return false;
+            }
+
+            IDictionary results = GetMember(GetMember(battle, "m_BattleSkillCalculation"), "m_PotentialResults") as IDictionary;
+            if (results == null)
+            {
+                return false;
+            }
+
+            bool hasFallback = false;
+            string fallbackSkill = null;
+            uint fallbackTarget = 0;
+            float fallbackDamage = 0f;
+            object fallbackActor = null;
+
+            foreach (object entry in entries)
+            {
+                string id = GetMember(entry, "m_SkillId") as string;
+                var guids = GetMember(entry, "m_ValidTargetActorGuids") as IReadOnlyList<uint>;
+                if (string.IsNullOrEmpty(id) || guids == null || guids.Count == 0)
+                {
+                    continue;
+                }
+
+                object candidate = Invoke(teams, "GetActorFromActorGuid", guids[0]);
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                object input = new SkillCalculation.Input(actorGuid, id, guids[0]);
+                if (!results.Contains(input))
+                {
+                    continue;
+                }
+
+                var actorResults = GetMember(results[input], "ActorResults") as IEnumerable;
+                if (actorResults == null)
+                {
+                    continue;
+                }
+
+                foreach (object mapped in actorResults)
+                {
+                    if (ToUInt(GetMember(mapped, "m_TargetActorGuid")) != guids[0])
+                    {
+                        continue;
+                    }
+
+                    float value = ToFloat(GetMember(mapped, "HealthDamage"));
+                    if (float.IsNaN(value))
+                    {
+                        value = 0f;
+                    }
+
+                    if (value > 0f)
+                    {
+                        skillId = id;
+                        targetGuid = guids[0];
+                        damage = value;
+                        target = candidate;
+                        return true;
+                    }
+
+                    if (!hasFallback)
+                    {
+                        hasFallback = true;
+                        fallbackSkill = id;
+                        fallbackTarget = guids[0];
+                        fallbackDamage = value;
+                        fallbackActor = candidate;
+                    }
+                }
+            }
+
+            if (hasFallback)
+            {
+                skillId = fallbackSkill;
+                targetGuid = fallbackTarget;
+                damage = fallbackDamage;
+                target = fallbackActor;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string ActorLabel(object actor)
+        {
+            if (actor == null)
+            {
+                return "?";
+            }
+
+            string name = GetMember(actor, "m_ActorName") as string;
+            return string.IsNullOrEmpty(name) ? ("#" + ToUInt(GetMember(actor, "m_ActorGuid"))) : name;
         }
 
         // ---------------------------------------------------------------- internals
@@ -580,6 +772,40 @@ namespace DSH.Foreseeker
             }
 
             return null;
+        }
+
+        private static object Invoke(object target, string method, params object[] args)
+        {
+            if (target == null)
+            {
+                return null;
+            }
+
+            int argCount = args == null ? 0 : args.Length;
+            for (Type type = target.GetType(); type != null; type = type.BaseType)
+            {
+                foreach (MethodInfo info in type.GetMethods(Any))
+                {
+                    if (info.Name != method || info.GetParameters().Length != argCount)
+                    {
+                        continue;
+                    }
+
+                    return info.Invoke(target, args);
+                }
+            }
+
+            return null;
+        }
+
+        private static uint ToUInt(object value)
+        {
+            return value == null ? 0u : Convert.ToUInt32(value);
+        }
+
+        private static float ToFloat(object value)
+        {
+            return value == null ? float.NaN : Convert.ToSingle(value);
         }
     }
 }
