@@ -101,7 +101,7 @@ LIFECYCLE OnDestroy
 `DontDestroyOnLoad` 在对象是根物体时调用也无效。Harmony 钩子不受影响（静态挂载），所以
 日志看起来"插件还活着"，实际 Update / OnGUI 全停。
 
-解决办法：`ForeseeHost.cs` 自建 `ForeseeHost` 物体 + `Runner` 组件驱动 Update/OnGUI，
+解决办法：`ForeseekerHost.cs` 自建 `ForeseekerHost` 物体 + `Runner` 组件驱动 Update/OnGUI，
 并在场景加载、战斗状态变化时自动重建。
 
 ## 6. 资源权重

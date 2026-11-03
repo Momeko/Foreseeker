@@ -46,7 +46,7 @@
 src\build.cmd
 ```
 
-会编译并部署到 `BepInEx\plugins\Foresee.dll`。游戏运行时 dll 被占用，脚本会先改名为 `.prev`，
+会编译并部署到 `BepInEx\plugins\Foreseeker.dll`。游戏运行时 dll 被占用，脚本会先改名为 `.prev`，
 需要重启游戏才会加载新版本。
 
 依赖：.NET SDK 的 `csc`（Roslyn），游戏自带的 `Managed\*.dll`、`BepInEx\core\BepInEx.dll`、
@@ -82,7 +82,7 @@ src/
   Probe.cs         实验探针：阶段标记、预计算成本、回合开始 RNG 快照
   SolverProbe.cs   预计算重放实验（验证沙盘）
   Solver.cs        求解器候选枚举与评分
-  ForeseeHost.cs   自建驱动对象（BepInEx 宿主会被游戏销毁）
+  ForeseekerHost.cs   自建驱动对象（BepInEx 宿主会被游戏销毁）
 tools/
   read-probe.ps1   日志读取与统计
 docs/
