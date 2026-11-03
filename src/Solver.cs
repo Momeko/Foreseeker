@@ -30,6 +30,7 @@ namespace DSH.Foreseeker
         private static object _healthMaxStat;
         private static object _stressMaxStat;
         private static bool _statsResolved;
+        private static object _teams;
 
         private sealed class Row
         {
@@ -69,6 +70,7 @@ namespace DSH.Foreseeker
             }
 
             object teams = GetMember(battle, "m_BattleTeams");
+            _teams = teams;
             uint actorGuid = ToUInt(GetMember(battle, "CurrentActorGuid"));
             object actor = actorGuid == 0 ? null : Invoke(teams, "GetActorFromActorGuid", actorGuid);
             if (actor == null)
@@ -180,9 +182,26 @@ namespace DSH.Foreseeker
             // Ally damage is a cost, enemy damage is a gain; a kill is worth much more.
             float sign = targetIsAlly ? -1f : 1f;
             float score = sign * 5f * (damage / maxHp);
+            string avoidedText = string.Empty;
             if (after <= 0f && damage > 0f)
             {
                 score += targetIsAlly ? -1000f : 30f;
+
+                // Killing the enemy that was about to strike prevents its predicted damage.
+                if (!targetIsAlly)
+                {
+                    float avoided;
+                    uint victimGuid;
+                    if (ForeseekerPlugin.PredictedDamage.TryGetValue(targetGuid, out avoided)
+                        && ForeseekerPlugin.PredictedTarget.TryGetValue(targetGuid, out victimGuid)
+                        && avoided > 0f)
+                    {
+                        object victim = Invoke(_teams, "GetActorFromActorGuid", victimGuid);
+                        float victimMax = Mathf.Max(1f, Stat(victim, _healthMaxStat, "m_Hp"));
+                        score += 5f * (avoided / victimMax);
+                        avoidedText = " -in" + avoided.ToString("F0");
+                    }
+                }
             }
 
             int effects;
@@ -194,6 +213,7 @@ namespace DSH.Foreseeker
                            + (crit ? "!" : string.Empty)
                            + (hit ? string.Empty : " miss")
                            + (effects > 0 ? "  fx" + effects : string.Empty)
+                           + avoidedText
                            + "  [" + score.ToString("F1") + "]";
 
             Color tint = targetIsAlly ? (after <= 0f ? new Color(1f, 0.4f, 0.4f) : new Color(0.8f, 0.9f, 1f))

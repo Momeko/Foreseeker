@@ -171,6 +171,10 @@ namespace DSH.Foreseeker
         /// <summary>Predicted (skill, target) per enemy guid, used by the solver's lookahead.</summary>
         internal static readonly Dictionary<uint, KeyValuePair<string, uint>> PredictedActions =
             new Dictionary<uint, KeyValuePair<string, uint>>();
+
+        /// <summary>Predicted damage per enemy guid, and who it would hit.</summary>
+        internal static readonly Dictionary<uint, float> PredictedDamage = new Dictionary<uint, float>();
+        internal static readonly Dictionary<uint, uint> PredictedTarget = new Dictionary<uint, uint>();
         private int _acOffset;
         private string _selKey = string.Empty;
         private string _selTurnKey = string.Empty;
@@ -2262,6 +2266,8 @@ namespace DSH.Foreseeker
             }
 
             PredictedActions[enemyGuid] = new KeyValuePair<string, uint>(chosenSkill, targetGuid);
+            PredictedDamage[enemyGuid] = dealt;
+            PredictedTarget[enemyGuid] = targetGuid;
 
             Logger.LogInfo("PRED_ENEMY: guid=" + enemyGuid
                            + " pick=" + pickRoll.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)
