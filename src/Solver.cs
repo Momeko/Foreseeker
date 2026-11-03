@@ -200,7 +200,7 @@ namespace DSH.Foreseeker
 
         private static readonly HashSet<string> BossTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "boss", "end_boss", "biome_boss", "gang_boss", "cultist_boss", "dog_boss", "kingdom_boss"
+            "boss", "end_boss", "biome_boss", "gang_boss", "cultist_boss", "kingdom_boss"
         };
 
         private static bool IsBoss(object actor)
