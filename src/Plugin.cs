@@ -161,7 +161,7 @@ namespace DSH.Foreseeker
         private string _enemyIntent = string.Empty;
         private string _playerStatus = string.Empty;
         private readonly List<string> _playerLines = new List<string>();
-        private bool _predictVisible = true;
+        private bool _predictVisible = false;
         private Rect _predictRect = new Rect(0f, 0f, 340f, 200f);
         private bool _predictPlaced;
         private int _predictPlacedW;
