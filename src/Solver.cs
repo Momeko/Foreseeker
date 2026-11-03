@@ -1370,7 +1370,7 @@ namespace DSH.Foreseeker
                         {
                             if (ToInt(value) == rank + 1)
                             {
-                                total += 1f;
+                                total += SkillValue(definition);
                                 break;
                             }
                         }
@@ -1384,6 +1384,40 @@ namespace DSH.Foreseeker
 
             UtilityCache[key] = total;
             return total;
+        }
+
+        /// <summary>Utility of one usable skill: a baseline for utility skills plus its damage.</summary>
+        private static float SkillValue(object definition)
+        {
+            if (definition == null || _healthDamageStat == null)
+            {
+                return 1f;
+            }
+
+            try
+            {
+                object stats = GetMember(definition, "m_ActorDataStats");
+                object container = stats == null
+                    ? null
+                    : (GetMember(stats, "StatContainer") ?? GetMember(stats, "m_StatContainer"));
+                if (container == null)
+                {
+                    return 1f;
+                }
+
+                object value = Invoke(container, "GetStatTotal", _healthDamageStat);
+                float damage = value == null ? 0f : ToFloat(value);
+                if (float.IsNaN(damage) || damage < 0f)
+                {
+                    damage = 0f;
+                }
+
+                return 1f + damage / 10f;
+            }
+            catch
+            {
+                return 1f;
+            }
         }
 
         private static float BucketOf(object actor, object statType)
