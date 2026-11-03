@@ -1235,23 +1235,32 @@ namespace DSH.Foreseeker
                 hp = max;
             }
 
+            // Relationships are a 0-20 resource; scale the change on the same 5-point bar as HP.
+            float leaning = ToFloat(GetMember(outcome, "m_LeaningChange"));
+            if (float.IsNaN(leaning))
+            {
+                leaning = 0f;
+            }
+
+            float affinity = -leaning * 5f / 20f;
+
             if (id == "meltdown")
             {
-                return HpLossCost(actor, Mathf.Max(0f, hp - max * 0.1f)) + 2f; // -15% deathblow resist
+                return HpLossCost(actor, Mathf.Max(0f, hp - max * 0.1f)) + 2f + affinity;
             }
 
             if (id == "resolute")
             {
                 float heal = Mathf.Max(0f, Mathf.Min(max - hp, max * 0.67f));
-                return -5f * (heal / max) - 1f; // +15% deathblow resist
+                return -5f * (heal / max) - 1f + affinity;
             }
 
             if (id == "toxic")
             {
-                return HpLossCost(actor, Mathf.Max(0f, hp - max * 0.3f)) + 1.5f; // -10% deathblow resist
+                return HpLossCost(actor, Mathf.Max(0f, hp - max * 0.3f)) + 1.5f + affinity;
             }
 
-            return 3f;
+            return 3f + affinity;
         }
 
         /// <summary>
