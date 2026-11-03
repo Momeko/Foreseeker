@@ -453,12 +453,81 @@ namespace DSH.Foreseeker
         /// <summary>Chance that an attack is avoided: dodge 50%, dodge+ 75%. Stacks do not compound.</summary>
         private static float DodgeFactor(object actor)
         {
+            // The game uses the chance baked into the first EVADE-type token (TokenDefinition.m_Chance),
+            // so dodge and dodge+ never stack: whichever token gets consumed first sets the odds.
+            float chance = FirstTokenChance(actor, "EVADE");
+            if (chance > 0f && chance <= 1f)
+            {
+                return 1f - chance;
+            }
+
             if (HasToken(actor, "dodge_plus"))
             {
                 return 0.25f;
             }
 
             return HasToken(actor, "dodge") ? 0.5f : 1f;
+        }
+
+        private static object _evadeTokenType;
+        private static bool _evadeTypeResolved;
+
+        private static object EvadeTokenType()
+        {
+            if (_evadeTypeResolved)
+            {
+                return _evadeTokenType;
+            }
+
+            _evadeTypeResolved = true;
+            try
+            {
+                Type tokenType = typeof(TokenDefinition).Assembly.GetType("Assets.Code.Token.TokenType");
+                FieldInfo field = tokenType == null
+                    ? null
+                    : tokenType.GetField("EVADE", BindingFlags.Public | BindingFlags.Static);
+                _evadeTokenType = field == null ? null : field.GetValue(null);
+            }
+            catch
+            {
+                _evadeTokenType = null;
+            }
+
+            return _evadeTokenType;
+        }
+
+        private static float FirstTokenChance(object actor, string tokenTypeName)
+        {
+            object tokenType = EvadeTokenType();
+            if (tokenType == null || actor == null)
+            {
+                return 0f;
+            }
+
+            object container = GetMember(actor, "m_TokenContainer");
+            if (container == null)
+            {
+                return 0f;
+            }
+
+            int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
+            for (int i = 0; i < count; i++)
+            {
+                object instance = Invoke(container, "GetInstanceAtIndex", i);
+                object definition = instance == null ? null : GetMember(instance, "Definition");
+                if (definition == null)
+                {
+                    continue;
+                }
+
+                object hasType = Invoke(definition, "GetHasType", tokenType);
+                if (hasType != null && ToBool(hasType))
+                {
+                    return ToFloat(GetMember(definition, "m_Chance"));
+                }
+            }
+
+            return 0f;
         }
 
         /// <summary>Damage multiplier for block: 50% / 75% reduction.</summary>
