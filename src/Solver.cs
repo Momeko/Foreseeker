@@ -295,7 +295,7 @@ namespace DSH.Foreseeker
             score += EffectValue(performer, actorResult, out effects);
 
             string label = SkillName(skillId) + " → " + ActorName(target)
-                           + "   伤害" + damage.ToString("F0")
+                           + (damage > 0f ? "   伤害" + damage.ToString("F0") : string.Empty)
                            + (crit ? " 暴击" : string.Empty)
                            + (hit ? string.Empty : " 未命中")
                            + EffectsText(actorResult)
@@ -639,6 +639,7 @@ namespace DSH.Foreseeker
                     continue;
                 }
 
+                object holder = GetMember(output, "m_TargetActor");
                 foreach (object instance in instances)
                 {
                     object definition = GetMember(instance, "EffectDefinition");
@@ -664,6 +665,29 @@ namespace DSH.Foreseeker
                         int amount = Math.Max(1, ToInt(GetMember(instance, "DotAddAmount")));
                         string dot = SaveReader.DescribeDotApplication(dotId, amount);
                         parts.Add(string.IsNullOrEmpty(dot) ? dotId : dot);
+                        continue;
+                    }
+
+                    float selfDamage = ToFloat(GetMember(instance, "HealthDamageAmount"));
+                    float selfPercent = ToFloat(GetMember(instance, "HealthDamagePercent"));
+                    if (float.IsNaN(selfDamage))
+                    {
+                        selfDamage = 0f;
+                    }
+
+                    if (float.IsNaN(selfPercent))
+                    {
+                        selfPercent = 0f;
+                    }
+
+                    if (selfPercent > 0f)
+                    {
+                        selfDamage += selfPercent * Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
+                    }
+
+                    if (selfDamage > 0f)
+                    {
+                        parts.Add("自伤" + selfDamage.ToString("0.#"));
                         continue;
                     }
 
@@ -784,6 +808,33 @@ namespace DSH.Foreseeker
                         int amount = Math.Max(1, ToInt(GetMember(instance, "DotAddAmount")));
                         float land = holderSign < 0f ? DodgeFactor(holder) : 1f;
                         total -= holderSign * 1.0f * amount * land;
+                        continue;
+                    }
+
+                    // Some effects hurt the holder directly (e.g. the Flagellant's self-damage);
+                    // that is a real cost even though the skill itself deals no damage.
+                    float effectDamage = ToFloat(GetMember(instance, "HealthDamageAmount"));
+                    float effectPercent = ToFloat(GetMember(instance, "HealthDamagePercent"));
+                    if (float.IsNaN(effectDamage))
+                    {
+                        effectDamage = 0f;
+                    }
+
+                    if (float.IsNaN(effectPercent))
+                    {
+                        effectPercent = 0f;
+                    }
+
+                    if (effectPercent > 0f)
+                    {
+                        effectDamage += effectPercent * Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
+                    }
+
+                    if (effectDamage > 0f)
+                    {
+                        float holderMaxHp = Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
+                        float land = holderSign < 0f ? DodgeFactor(holder) : 1f;
+                        total -= holderSign * 5f * (effectDamage / holderMaxHp) * land;
                         continue;
                     }
 

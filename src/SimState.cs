@@ -618,6 +618,30 @@ namespace DSH.Foreseeker
                         continue;
                     }
 
+                    // Effects can also damage their own holder (Flagellant's self-damage).
+                    float effectDamage = ToFloat(GetMember(instance, "HealthDamageAmount"));
+                    float effectPercent = ToFloat(GetMember(instance, "HealthDamagePercent"));
+                    if (float.IsNaN(effectDamage))
+                    {
+                        effectDamage = 0f;
+                    }
+
+                    if (float.IsNaN(effectPercent))
+                    {
+                        effectPercent = 0f;
+                    }
+
+                    if (effectPercent > 0f)
+                    {
+                        float holderMax = Mathf.Max(1f, StatMaxHp(holder));
+                        effectDamage += effectPercent * holderMax;
+                    }
+
+                    if (effectDamage > 0f)
+                    {
+                        ApplyDamage(holder, effectDamage);
+                    }
+
                     float healAmount = ToFloat(GetMember(instance, "HealthHealAmount"));
                     if (healAmount > 0f)
                     {
@@ -663,6 +687,40 @@ namespace DSH.Foreseeker
                     }
                 }
             }
+        }
+
+        private static object _healthMaxStat;
+        private static bool _healthMaxResolved;
+
+        private static float StatMaxHp(object actor)
+        {
+            if (!_healthMaxResolved)
+            {
+                _healthMaxResolved = true;
+                try
+                {
+                    Type statType = typeof(SkillCalculation).Assembly.GetType("Assets.Code.Actor.ActorStatType");
+                    FieldInfo field = statType == null
+                        ? null
+                        : statType.GetField("HEALTH_MAX", BindingFlags.Public | BindingFlags.Static);
+                    _healthMaxStat = field == null ? null : field.GetValue(null);
+                }
+                catch
+                {
+                    _healthMaxStat = null;
+                }
+            }
+
+            if (_healthMaxStat != null)
+            {
+                object value = Invoke(actor, "GetClampedStatValue", _healthMaxStat);
+                if (value != null)
+                {
+                    return ToFloat(value);
+                }
+            }
+
+            return ToFloat(GetMember(actor, "m_Hp"));
         }
 
         internal static void ApplyHealthDelta(object actor, float delta)
