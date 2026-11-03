@@ -24,7 +24,7 @@ namespace DSH.Foreseeker
         private const BindingFlags Any =
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-        internal static bool Visible = true;
+        internal static bool Visible = false;
 
         private static float _nextRefresh;
         private static string _header = "solver: idle";

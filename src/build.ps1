@@ -1,4 +1,4 @@
-# Build the Foreseeker BepInEx plugin and deploy it into the ORIGINAL game install.
+# Build the Foretest BepInEx plugin (fork: logs on, UI hidden) and deploy it into the ORIGINAL game install.
 # Default target: D:\Software\steamapps\common\Darkest Dungeon(R) II  (discovered by wildcard
 # because the folder name contains a non-ASCII character and this script must stay ASCII-only).
 #
@@ -34,23 +34,23 @@ $refs += (Join-Path $core '0Harmony.dll')
 $cscArgs = @(
     '-nologo', '-nostdlib+', '-noconfig', '-target:library', '-langversion:latest',
     '-optimize+', '-deterministic'
-) + ($refs | ForEach-Object { "-r:$_" }) + @("-out:$outDir\Foreseeker.dll") + $src
+) + ($refs | ForEach-Object { "-r:$_" }) + @("-out:$outDir\Foretest.dll") + $src
 
 & dotnet $csc @cscArgs
 if ($LASTEXITCODE -ne 0) { throw "compile failed with exit code $LASTEXITCODE" }
 
-$deployed = Join-Path $game 'BepInEx\plugins\Foreseeker.dll'
+$deployed = Join-Path $game 'BepInEx\plugins\Foretest.dll'
 
 # If the game is running, the DLL is mapped and cannot be overwritten in place.
 # Renaming the mapped file is allowed on NTFS, so fall back to: move old -> .prev, copy new.
 try {
-    Copy-Item -LiteralPath (Join-Path $outDir 'Foreseeker.dll') -Destination $deployed -Force -ErrorAction Stop
+    Copy-Item -LiteralPath (Join-Path $outDir 'Foretest.dll') -Destination $deployed -Force -ErrorAction Stop
     Write-Host "deployed in place (game not running)."
 } catch {
-    $prev = Join-Path $game 'BepInEx\plugins\Foreseeker.dll.prev'
+    $prev = Join-Path $game 'BepInEx\plugins\Foretest.dll.prev'
     if (Test-Path -LiteralPath $prev) { Remove-Item -LiteralPath $prev -Force }
     Move-Item -LiteralPath $deployed -Destination $prev -Force
-    Copy-Item -LiteralPath (Join-Path $outDir 'Foreseeker.dll') -Destination $deployed -Force
+    Copy-Item -LiteralPath (Join-Path $outDir 'Foretest.dll') -Destination $deployed -Force
     Write-Host "game was running: old DLL renamed to Foreseeker.dll.prev (restart the game to load the new build)."
 }
 
@@ -59,19 +59,19 @@ Get-ChildItem (Join-Path $game 'BepInEx\plugins') -Filter 'Foreseeker.dll.old-*'
     Remove-Item -Force -ErrorAction SilentlyContinue
 
 # Install the default INI next to the DLL, but never overwrite an edited one.
-$iniSrc = Join-Path $PSScriptRoot 'Foreseeker.ini'
-$iniDst = Join-Path $game 'BepInEx\plugins\Foreseeker.ini'
+$iniSrc = Join-Path $PSScriptRoot 'Foretest.ini'
+$iniDst = Join-Path $game 'BepInEx\plugins\Foretest.ini'
 if ((Test-Path -LiteralPath $iniSrc) -and -not (Test-Path -LiteralPath $iniDst)) {
     Copy-Item -LiteralPath $iniSrc -Destination $iniDst -Force
     Write-Host "installed default INI: $iniDst"
 }
 
 # The old BepInEx .cfg config is no longer used.
-Get-ChildItem (Join-Path $game 'BepInEx\config') -Filter 'com.momeko.dd2.foreseeker.cfg' -ErrorAction SilentlyContinue |
+Get-ChildItem (Join-Path $game 'BepInEx\config') -Filter 'com.momeko.dd2.foretest.cfg' -ErrorAction SilentlyContinue |
     Remove-Item -Force -ErrorAction SilentlyContinue
 
 
 Write-Host "game   : $game"
-Write-Host "built  : $outDir\Foreseeker.dll"
+Write-Host "built  : $outDir\Foretest.dll"
 Write-Host "deploy : $deployed"
 Get-Item -LiteralPath $deployed | Select-Object Length, LastWriteTime, FullName | Format-List
