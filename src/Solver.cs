@@ -30,6 +30,8 @@ namespace DSH.Foreseeker
 
         private static object _healthMaxStat;
         private static object _healthDamageStat;
+        private static object _dealtStat;
+        private static object _receivedStat;
         private static float _avgEnemyMaxHp = 13f;
         private static object _stressMaxStat;
         private static bool _statsResolved;
@@ -808,16 +810,23 @@ namespace DSH.Foreseeker
                 float hit = ExpectedHit(performer);
                 if (hit > 0f)
                 {
-                    int s0 = HasToken(performer, "strength") ? 1 : 0;
-                    int c0 = HasToken(performer, "crit") ? 1 : 0;
-                    int v0 = vulnerableHolder != null && HasToken(vulnerableHolder, "vulnerable") ? 1 : 0;
+                    // All "+X% damage" sources live in ONE additive bucket: skill bonuses,
+                    // strength tokens and trinkets add up (6 * (1 + 1.0 + 0.5 + 0.5) = 18).
+                    // Crit and "received damage" stay multiplicative.
+                    float dealt = BucketOf(performer, _dealtStat);
+                    float received = BucketOf(vulnerableHolder, _receivedStat);
 
-                    float before = Mathf.Pow(1.5f, s0) * Mathf.Pow(1.5f, c0) * Mathf.Pow(1.5f, v0);
-                    float after = Mathf.Pow(1.5f, s0 + grantedStrength)
-                                  * Mathf.Pow(1.5f, c0 + grantedCrit)
-                                  * Mathf.Pow(1.5f, v0 + grantedVulnerable);
+                    bool hadCrit = HasToken(performer, "crit");
+                    float critBefore = hadCrit ? 1.5f : 1f;
+                    float critAfter = (hadCrit || grantedCrit > 0) ? 1.5f : 1f;
 
-                    float gain = hit * (after - before);
+                    float before = hit * dealt * critBefore * received;
+                    float after = hit
+                                  * Mathf.Max(0f, dealt + 0.5f * grantedStrength)
+                                  * critAfter
+                                  * Mathf.Max(0f, received + 0.5f * grantedVulnerable);
+
+                    float gain = after - before;
                     total += 5f * gain / Mathf.Max(1f, _avgEnemyMaxHp);
                 }
             }
@@ -964,6 +973,23 @@ namespace DSH.Foreseeker
             }
 
             return total;
+        }
+
+        private static float BucketOf(object actor, object statType)
+        {
+            if (actor == null || statType == null)
+            {
+                return 1f;
+            }
+
+            object value = Invoke(actor, "GetClampedStatValue", statType);
+            if (value == null)
+            {
+                return 1f;
+            }
+
+            float result = ToFloat(value);
+            return float.IsNaN(result) ? 1f : result;
         }
 
         private static float ExpectedHit(object actor)
@@ -1132,6 +1158,8 @@ namespace DSH.Foreseeker
                 _healthMaxStat = statType.GetField("HEALTH_MAX", BindingFlags.Public | BindingFlags.Static).GetValue(null);
                 _stressMaxStat = statType.GetField("STRESS_MAX", BindingFlags.Public | BindingFlags.Static).GetValue(null);
                 _healthDamageStat = statType.GetField("HEALTH_DAMAGE", BindingFlags.Public | BindingFlags.Static).GetValue(null);
+                _dealtStat = statType.GetField("HEALTH_DAMAGE_DEALT_PERCENT", BindingFlags.Public | BindingFlags.Static).GetValue(null);
+                _receivedStat = statType.GetField("HEALTH_DAMAGE_RECEIVED_PERCENT", BindingFlags.Public | BindingFlags.Static).GetValue(null);
             }
             catch
             {
