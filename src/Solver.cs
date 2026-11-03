@@ -534,13 +534,25 @@ namespace DSH.Foreseeker
                     {
                         int amount = Math.Max(1, ToInt(GetMember(instance, "TokenAddAmount")));
                         int polarity = TokenPolarity(tokenId);
+                        float weight = TokenWeight(tokenId);
+
                         if (polarity > 0)
                         {
-                            total += holderSign * 1.5f * amount;
+                            // A defensive buff on a healthy hero is worth much less than one
+                            // that actually patches a wound.
+                            float scale = 1f;
+                            if (IsAlly(performer, holder))
+                            {
+                                float holderMax = Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
+                                float holderHp = ToFloat(GetMember(holder, "m_Hp"));
+                                scale = 0.5f + 0.5f * Mathf.Clamp01((holderMax - holderHp) / holderMax);
+                            }
+
+                            total += holderSign * weight * amount * scale;
                         }
                         else if (polarity < 0)
                         {
-                            total -= holderSign * 1.5f * amount;
+                            total -= holderSign * weight * amount;
                         }
 
                         continue;
@@ -558,12 +570,55 @@ namespace DSH.Foreseeker
                     if (heal > 0f)
                     {
                         float maxHp = Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
-                        total += holderSign * 5f * (heal / maxHp);
+                        float hp = ToFloat(GetMember(holder, "m_Hp"));
+                        float effective = Mathf.Max(0f, Mathf.Min(heal, maxHp - hp));
+                        total += holderSign * 5f * (effective / maxHp);
                     }
                 }
             }
 
+            // Keep a stack of small buffs from out-scoring a real hit.
+            if (total > 3f)
+            {
+                total = 3f + (total - 3f) * 0.3f;
+            }
+            else if (total < -3f)
+            {
+                total = -3f + (total + 3f) * 0.3f;
+            }
+
             return total;
+        }
+
+        /// <summary>Relative worth of one stack of a token, in "hit points of a 13 HP enemy" units.</summary>
+        private static float TokenWeight(string tokenId)
+        {
+            switch (tokenId)
+            {
+                case "dodge":
+                case "dodge_plus":
+                    return 0.7f;
+                case "block":
+                case "block_plus":
+                    return 0.8f;
+                case "strength":
+                case "crit":
+                    return 1.0f;
+                case "speed":
+                case "speed_plus":
+                    return 0.3f;
+                case "vulnerable":
+                case "weak":
+                case "dazed":
+                case "stun":
+                    return 1.0f;
+                case "guard":
+                    return 0.8f;
+                case "riposte":
+                    return 0.9f;
+                default:
+                    return 0.6f;
+            }
         }
 
         private static readonly Dictionary<string, int> TokenPolarityCache = new Dictionary<string, int>();
