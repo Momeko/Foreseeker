@@ -1333,20 +1333,23 @@ namespace DSH.Foreseeker
         }
 
         private static readonly Dictionary<string, float> UtilityCache = new Dictionary<string, float>();
-        private static readonly Dictionary<uint, HashSet<string>> CoolingCache =
-            new Dictionary<uint, HashSet<string>>();
+        private static readonly Dictionary<uint, Dictionary<string, int>> CoolingCache =
+            new Dictionary<uint, Dictionary<string, int>>();
 
-        /// <summary>Cooldowns only decide availability: a cooling skill is simply not usable.</summary>
-        private static HashSet<string> CoolingSet(object actor)
+        /// <summary>
+        /// Cooldown id -> remaining turns. A skill that comes back next turn still matters:
+        /// moving to a rank this turn prepares it for the next one.
+        /// </summary>
+        private static Dictionary<string, int> CoolingMap(object actor)
         {
             uint guid = ToUInt(GetMember(actor, "m_ActorGuid"));
-            HashSet<string> set;
-            if (CoolingCache.TryGetValue(guid, out set))
+            Dictionary<string, int> map;
+            if (CoolingCache.TryGetValue(guid, out map))
             {
-                return set;
+                return map;
             }
 
-            set = new HashSet<string>();
+            map = new Dictionary<string, int>();
             try
             {
                 var list = GetMember(actor, "m_SkillCooldowns") as IEnumerable;
@@ -1354,7 +1357,14 @@ namespace DSH.Foreseeker
                 {
                     foreach (object instance in list)
                     {
-                        if (instance == null || !ToBool(Invoke(instance, "GetIsCoolingDown", null)))
+                        if (instance == null)
+                        {
+                            continue;
+                        }
+
+                        object remaining = Invoke(instance, "GetCooldownDurationAmountRemaining", null);
+                        int turns = remaining == null ? 0 : ToInt(remaining);
+                        if (turns <= 0)
                         {
                             continue;
                         }
@@ -1362,7 +1372,7 @@ namespace DSH.Foreseeker
                         string id = GetMember(instance, "m_SkillCooldownId") as string;
                         if (!string.IsNullOrEmpty(id))
                         {
-                            set.Add(id);
+                            map[id] = turns;
                         }
                     }
                 }
@@ -1371,8 +1381,8 @@ namespace DSH.Foreseeker
             {
             }
 
-            CoolingCache[guid] = set;
-            return set;
+            CoolingCache[guid] = map;
+            return map;
         }
 
         /// <summary>How many of the actor's equipped skills can be launched from this rank.</summary>
@@ -1389,7 +1399,7 @@ namespace DSH.Foreseeker
             float total = 0f;
             try
             {
-                HashSet<string> cooling = CoolingSet(actor);
+                Dictionary<string, int> cooling = CoolingMap(actor);
                 object library = SingletonMonoBehaviour<Library<string, ActorDataSkill>>.Instance;
                 var skills = GetMember(actor, "m_CombatSkills") as IEnumerable;
                 if (skills != null)
@@ -1409,17 +1419,26 @@ namespace DSH.Foreseeker
                             continue;
                         }
 
+                        // Cooling skills still count if they come back next turn: moving now sets
+                        // up the big skill for then. Further out than that, ignore them.
+                        float weight = 1f;
                         string cooldownId = GetMember(definition, "SkillCooldownId") as string;
-                        if (!string.IsNullOrEmpty(cooldownId) && cooling.Contains(cooldownId))
+                        int remaining;
+                        if (!string.IsNullOrEmpty(cooldownId) && cooling.TryGetValue(cooldownId, out remaining))
                         {
-                            continue;
+                            if (remaining > 1)
+                            {
+                                continue;
+                            }
+
+                            weight = 0.6f;
                         }
 
                         foreach (object value in ranks)
                         {
                             if (ToInt(value) == rank + 1)
                             {
-                                total += SkillValue(definition);
+                                total += SkillValue(definition) * weight;
                                 break;
                             }
                         }
