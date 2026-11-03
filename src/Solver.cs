@@ -73,6 +73,7 @@ namespace DSH.Foreseeker
         private static void Build()
         {
             Rows.Clear();
+            UtilityCache.Clear();
 
             object battle = GetMember(SingletonMonoBehaviour<CombatBhv>.Instance, "m_Battle");
             if (battle == null)
