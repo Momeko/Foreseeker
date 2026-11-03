@@ -1,0 +1,9 @@
+# Build output
+src/bin/
+
+# Local editor / tooling noise
+*.user
+*.suo
+.vs/
+.idea/
+Thumbs.db
