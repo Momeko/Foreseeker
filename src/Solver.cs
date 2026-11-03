@@ -5,9 +5,11 @@ using System.Reflection;
 using Assets.Code.Combat;
 using Assets.Code.Game;
 using Assets.Code.Library;
+using Assets.Code.Math;
 using Assets.Code.Skill;
 using Assets.Code.Token;
 using Assets.Code.Utils;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace DSH.Foreseeker
@@ -67,6 +69,204 @@ namespace DSH.Foreseeker
             catch (Exception ex)
             {
                 _header = "solver error: " + ex.GetType().Name;
+            }
+        }
+
+        private static string _itemLine = string.Empty;
+
+        private static MethodInfo _addPotentialMethod;
+
+        private static MethodInfo FindAddPotentialMethod()
+        {
+            foreach (MethodInfo method in typeof(SkillCalculation).GetMethods(
+                         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                if (method.Name != "AddPotentialResult")
+                {
+                    continue;
+                }
+
+                ParameterInfo[] parameters = method.GetParameters();
+                if (parameters.Length == 2 && parameters[1].ParameterType == typeof(IReadOnlyList<uint>))
+                {
+                    return method;
+                }
+            }
+
+            return null;
+        }
+
+        private static List<object> TeamActors(int teamIndex)
+        {
+            var list = new List<object>();
+            var teams = GetMember(_teams, "m_Teams") as IEnumerable;
+            if (teams == null)
+            {
+                return list;
+            }
+
+            foreach (object team in teams)
+            {
+                if (team == null || ToInt(GetMember(team, "m_TeamIndex")) != teamIndex)
+                {
+                    continue;
+                }
+
+                var actors = GetMember(team, "m_Actors") as IEnumerable;
+                if (actors == null)
+                {
+                    continue;
+                }
+
+                foreach (object actor in actors)
+                {
+                    if (actor != null && ToBool(GetMember(actor, "m_IsLiving")))
+                    {
+                        list.Add(actor);
+                    }
+                }
+            }
+
+            return list;
+        }
+
+        /// <summary>
+        /// Combat items are free actions (one per hero, one use), so they are advice on top of the
+        /// ranked skills rather than a row competing with them.
+        /// </summary>
+        private static void BuildItemAdvice(object actor)
+        {
+            _itemLine = string.Empty;
+
+            try
+            {
+                object inventory = GetMember(actor, "m_CombatInventory");
+                if (inventory == null)
+                {
+                    return;
+                }
+
+                var items = Invoke(inventory, "GetValidItems", null) as IEnumerable;
+                if (items == null)
+                {
+                    return;
+                }
+
+                object battle = SimState.Battle;
+                if (battle == null)
+                {
+                    return;
+                }
+
+                object teams = GetMember(battle, "m_BattleTeams");
+                object turnOrder = GetMember(battle, "m_BattleTurnOrder");
+                object tracking = GetMember(battle, "m_BattleTracking");
+                if (teams == null || turnOrder == null)
+                {
+                    return;
+                }
+
+                if (_addPotentialMethod == null)
+                {
+                    _addPotentialMethod = FindAddPotentialMethod();
+                }
+
+                if (_addPotentialMethod == null)
+                {
+                    return;
+                }
+
+                object library = SingletonMonoBehaviour<Library<string, ActorDataSkill>>.Instance;
+                uint actorGuid = ToUInt(GetMember(actor, "m_ActorGuid"));
+
+                string bestLine = null;
+                float bestScore = float.NegativeInfinity;
+
+                JToken rng = RandomContainer.SaveToJson();
+                try
+                {
+                    foreach (object item in items)
+                    {
+                        object definition = Invoke(item, "GetItemDefinition", null);
+                        string id = definition == null ? null : GetMember(definition, "Id") as string;
+                        if (string.IsNullOrEmpty(id))
+                        {
+                            continue;
+                        }
+
+                        object skill = Invoke(library, "GetLibraryElement", id);
+                        if (skill == null)
+                        {
+                            continue;
+                        }
+
+                        bool friendly = ToBool(GetMember(skill, "m_IsFriendly"));
+                        List<object> targets = TeamActors(friendly ? 0 : 1);
+
+                        foreach (object target in targets)
+                        {
+                            uint targetGuid = ToUInt(GetMember(target, "m_ActorGuid"));
+                            object temp = Activator.CreateInstance(
+                                typeof(SkillCalculation), teams, turnOrder, tracking);
+                            object input = new SkillCalculation.Input(actorGuid, id, targetGuid);
+                            _addPotentialMethod.Invoke(temp, new object[] { input, new List<uint> { targetGuid } });
+
+                            IDictionary results = GetMember(temp, "m_PotentialResults") as IDictionary;
+                            if (results == null)
+                            {
+                                continue;
+                            }
+
+                            float score = 0f;
+                            foreach (DictionaryEntry pair in results)
+                            {
+                                var actorResults = GetMember(pair.Value, "ActorResults") as IEnumerable;
+                                if (actorResults == null)
+                                {
+                                    continue;
+                                }
+
+                                foreach (object actorResult in actorResults)
+                                {
+                                    if (ToUInt(GetMember(actorResult, "m_TargetActorGuid")) != targetGuid)
+                                    {
+                                        continue;
+                                    }
+
+                                    float damage = ToFloat(GetMember(actorResult, "HealthDamage"));
+                                    if (float.IsNaN(damage))
+                                    {
+                                        damage = 0f;
+                                    }
+
+                                    score += friendly ? -HpLossCost(target, damage) : HpLossCost(target, damage);
+
+                                    int count;
+                                    score += EffectValue(actor, actorResult, out count);
+                                }
+                            }
+
+                            if (score > bestScore)
+                            {
+                                bestScore = score;
+                                bestLine = SkillName(id) + " → " + ActorName(target);
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    RandomContainer.LoadFromJson((JObject)rng);
+                }
+
+                if (bestLine != null)
+                {
+                    _itemLine = "免费物品：" + bestLine + "  [" + bestScore.ToString("F1") + "]";
+                }
+            }
+            catch (Exception ex)
+            {
+                _itemLine = "物品读取失败：" + ex.GetType().Name;
             }
         }
 
@@ -247,6 +447,8 @@ namespace DSH.Foreseeker
                       + " · 第" + ToInt(GetMember(battle, "CurrentRound")) + "回合"
                       + " 第" + (ToInt(GetMember(battle, "CurrentTurn")) + 1) + "手"
                       + " · " + plans + " 个选择 · 评分越高越好 · 按 F5 关闭";
+
+            BuildItemAdvice(actor);
         }
 
         private static Row Score(object performer, object target, string skillId, uint targetGuid,
@@ -1808,7 +2010,8 @@ namespace DSH.Foreseeker
             }
 
             int count = Mathf.Min(Rows.Count, 10);
-            var rect = new Rect(Screen.width - 560f, 80f, 550f, 54f + count * 22f);
+            bool hasItem = !string.IsNullOrEmpty(_itemLine);
+            var rect = new Rect(Screen.width - 560f, 80f, 550f, 54f + (count + (hasItem ? 1 : 0)) * 22f);
             GUI.Box(rect, string.Empty);
 
             Color header = GUI.color;
@@ -1816,12 +2019,22 @@ namespace DSH.Foreseeker
             GUI.Label(new Rect(rect.x + 10f, rect.y + 6f, rect.width - 20f, 22f), _header, _style);
             GUI.color = header;
 
+            float rowTop = rect.y + 30f;
+            if (hasItem)
+            {
+                Color itemColor = GUI.color;
+                GUI.color = new Color(0.75f, 0.92f, 1f);
+                GUI.Label(new Rect(rect.x + 10f, rowTop, rect.width - 20f, 22f), _itemLine, _style);
+                GUI.color = itemColor;
+                rowTop += 22f;
+            }
+
             for (int i = 0; i < count; i++)
             {
                 Row row = Rows[i];
                 Color old = GUI.color;
                 GUI.color = row.Tint;
-                GUI.Label(new Rect(rect.x + 10f, rect.y + 30f + i * 22f, rect.width - 20f, 22f),
+                GUI.Label(new Rect(rect.x + 10f, rowTop + i * 22f, rect.width - 20f, 22f),
                           (i + 1) + ". " + row.Label + "  [" + row.Score.ToString("F1") + "]", _style);
                 GUI.color = old;
             }
