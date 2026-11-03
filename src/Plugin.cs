@@ -167,6 +167,10 @@ namespace DSH.Foreseeker
         private int _predictPlacedW;
         private int _predictPlacedH;
         private readonly List<string> _predictLines = new List<string>();
+
+        /// <summary>Predicted (skill, target) per enemy guid, used by the solver's lookahead.</summary>
+        internal static readonly Dictionary<uint, KeyValuePair<string, uint>> PredictedActions =
+            new Dictionary<uint, KeyValuePair<string, uint>>();
         private int _acOffset;
         private string _selKey = string.Empty;
         private string _selTurnKey = string.Empty;
@@ -2256,6 +2260,8 @@ namespace DSH.Foreseeker
             {
                 hp[targetGuid] = hp[targetGuid] - dealt;
             }
+
+            PredictedActions[enemyGuid] = new KeyValuePair<string, uint>(chosenSkill, targetGuid);
 
             Logger.LogInfo("PRED_ENEMY: guid=" + enemyGuid
                            + " pick=" + pickRoll.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)

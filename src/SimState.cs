@@ -763,9 +763,43 @@ namespace DSH.Foreseeker
                     }
                 }
 
+                // What the AI is actually predicted to pick (filled by UpdatePredictions).
+                string pred = "none";
+                KeyValuePair<string, uint> action;
+                if (ForeseekerPlugin.PredictedActions.TryGetValue(enemyGuid, out action))
+                {
+                    foreach (DictionaryEntry pair in results)
+                    {
+                        string skill = GetMember(pair.Key, "m_SelectedSkillId") as string;
+                        if (!string.Equals(skill, action.Key, StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+
+                        var actorResults = GetMember(pair.Value, "ActorResults") as IEnumerable;
+                        if (actorResults == null)
+                        {
+                            continue;
+                        }
+
+                        foreach (object mapped in actorResults)
+                        {
+                            if (ToUInt(GetMember(mapped, "m_TargetActorGuid")) != action.Value)
+                            {
+                                continue;
+                            }
+
+                            float value = ToFloat(GetMember(mapped, "HealthDamage"));
+                            pred = action.Key + "@" + action.Value + "="
+                                   + (float.IsNaN(value) ? 0f : value).ToString("F1");
+                        }
+                    }
+                }
+
                 string name = GetMember(enemy, "m_ActorName") as string;
                 return "enemy=" + (string.IsNullOrEmpty(name) ? "#" + enemyGuid : name)
-                       + " pairs=" + pairs + " results=" + count + " best=" + best;
+                       + " pairs=" + pairs + " results=" + count + " best=" + best
+                       + " pred=" + pred;
             }
             catch (Exception ex)
             {
