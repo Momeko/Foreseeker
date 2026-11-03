@@ -32,6 +32,18 @@ namespace DSH.Foreseeker
         internal static bool PrecomputeCaptured;
         internal static long PrecomputeCapturedAt;
 
+        /// <summary>
+        /// While set, EventActorControllerCalculatedValidSkills.Trigger is skipped. The controller
+        /// clears its entry list when the event is not triggered, and triggering it for a
+        /// hypothetical actor makes the UI drop the current skill bar.
+        /// </summary>
+        internal static bool SuppressValidSkillsEvent;
+
+        private static bool OnValidSkillsEventPre()
+        {
+            return !SuppressValidSkillsEvent;
+        }
+
         internal static void Emit(string line)
         {
             Action<string> sink = RandomTrace.Sink;
@@ -52,6 +64,7 @@ namespace DSH.Foreseeker
             Hook(harmony, typeof(Assets.Code.Skill.Events.EventSkillFinalizeResults), "Trigger", "OnFinalize", null);
             Hook(harmony, typeof(Assets.Code.Skill.SkillCalculation), "HandleEventActorControllerCalculatedValidSkills", "OnPrecompute", null);
             Hook(harmony, typeof(Assets.Code.Actor.ActorController.ActorControllerBase), "CalculateValidSkillTargetEntries", null, "OnValidSkillsPre");
+            Hook(harmony, typeof(Assets.Code.Actor.Events.EventActorControllerCalculatedValidSkills), "Trigger", null, "OnValidSkillsEventPre");
 
             MethodInfo addPotential = FindAddPotentialResult();
             if (addPotential != null)

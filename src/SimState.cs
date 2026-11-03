@@ -654,9 +654,17 @@ namespace DSH.Foreseeker
                     return "enemy=" + enemyGuid + " skills=0";
                 }
 
-                // false = build the entry list only. true would fire the precompute event and the
-                // game hides the current actor's skill bar.
-                Invoke(controller, "CalculateValidSkillTargetEntries", skillIds, false);
+                // true keeps the entry list (false clears it), but the event it raises makes the
+                // UI drop the current actor's skill bar, so suppress it for this call only.
+                Probe.SuppressValidSkillsEvent = true;
+                try
+                {
+                    Invoke(controller, "CalculateValidSkillTargetEntries", skillIds, true);
+                }
+                finally
+                {
+                    Probe.SuppressValidSkillsEvent = false;
+                }
 
                 var entries = GetMember(controller, "m_SkillTargetEntries") as IEnumerable;
                 if (entries == null)
