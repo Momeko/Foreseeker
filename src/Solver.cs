@@ -137,6 +137,58 @@ namespace DSH.Foreseeker
         /// Combat items are free actions (one per hero, one use), so they are advice on top of the
         /// ranked skills rather than a row competing with them.
         /// </summary>
+        private static int _partyLoggedBattle;
+
+        /// <summary>Logs the party's classes and paths once per battle, so a run can be labelled.</summary>
+        private static void LogParty(object battle)
+        {
+            try
+            {
+                int hash = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(battle);
+                if (hash == _partyLoggedBattle)
+                {
+                    return;
+                }
+
+                _partyLoggedBattle = hash;
+
+                Action<string> sink = RandomTrace.Sink;
+                if (sink == null)
+                {
+                    return;
+                }
+
+                foreach (object hero in TeamActors(0))
+                {
+                    string classId = DataId(GetMember(hero, "m_ActorDataClass"));
+                    string pathId = DataId(GetMember(hero, "m_ActorDataPath"));
+                    int position = ToInt(GetMember(hero, "m_TeamPosition")) + 1;
+                    float hp = ToFloat(GetMember(hero, "m_Hp"));
+                    float max = Mathf.Max(1f, Stat(hero, _healthMaxStat, "m_Hp"));
+
+                    sink("S HERO class=" + ActorName(hero)
+                         + "(" + classId + ")"
+                         + " path=" + pathId
+                         + " pos=" + position
+                         + " hp=" + hp.ToString("F0") + "/" + max.ToString("F0"));
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private static string DataId(object container)
+        {
+            if (container == null)
+            {
+                return "?";
+            }
+
+            object id = GetMember(container, "Id");
+            string text = id as string;
+            return string.IsNullOrEmpty(text) ? "?" : text;
+        }
         private static void BuildItemAdvice(object actor)
         {
             _itemLine = string.Empty;
@@ -297,6 +349,7 @@ namespace DSH.Foreseeker
 
             object teams = GetMember(battle, "m_BattleTeams");
             _teams = teams;
+            LogParty(battle);
             uint actorGuid = ToUInt(GetMember(battle, "CurrentActorGuid"));
             object actor = actorGuid == 0 ? null : Invoke(teams, "GetActorFromActorGuid", actorGuid);
             if (actor == null)
