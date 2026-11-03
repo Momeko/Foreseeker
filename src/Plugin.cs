@@ -352,6 +352,7 @@ namespace DSH.Foreseeker
             CheckIniForChanges();
             HandleHotkeys();
             Solver.Refresh();
+            SimState.TickAuto();
             UpdateLiveCombat();
             UpdateSkillPreview();
             UpdateSaveReader();

@@ -192,6 +192,7 @@ namespace DSH.Foreseeker
             {
                 Emit("AUTOREQ seq=" + RandomTrace.TotalSeq);
                 SolverProbe.RequestAuto();
+                SimState.RequestAuto();
             }
         }
 

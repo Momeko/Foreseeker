@@ -47,6 +47,32 @@ namespace DSH.Foreseeker
             get { return Fields.Count; }
         }
 
+        private static bool _autoRequested;
+        private static float _nextAuto;
+
+        /// <summary>Queued by the state-change hook: run the apply/rollback probe at turn start.</summary>
+        internal static void RequestAuto()
+        {
+            _autoRequested = true;
+        }
+
+        internal static void TickAuto()
+        {
+            if (!_autoRequested)
+            {
+                return;
+            }
+
+            if (Time.realtimeSinceStartup < _nextAuto)
+            {
+                return;
+            }
+
+            _autoRequested = false;
+            _nextAuto = Time.realtimeSinceStartup + 1.5f;
+            ApplyTest();
+        }
+
         internal static object Battle
         {
             get
