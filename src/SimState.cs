@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 using Assets.Code.Combat;
+using Assets.Code.Dot;
 using Assets.Code.Library;
 using Assets.Code.Math;
 using Assets.Code.Skill;
@@ -407,6 +408,7 @@ namespace DSH.Foreseeker
         }
 
         private static object _tokenLibrary;
+        private static object _dotLibrary;
         private static object _skillSourceType;
         private static bool _applyRefsResolved;
 
@@ -421,6 +423,7 @@ namespace DSH.Foreseeker
             try
             {
                 _tokenLibrary = SingletonMonoBehaviour<Library<string, TokenDefinition>>.Instance;
+                _dotLibrary = SingletonMonoBehaviour<Library<string, DotDefinition>>.Instance;
                 Type sourceType = typeof(SkillCalculation).Assembly.GetType("Assets.Code.Source.SourceType");
                 if (sourceType != null)
                 {
@@ -434,6 +437,7 @@ namespace DSH.Foreseeker
             catch
             {
                 _tokenLibrary = null;
+                _dotLibrary = null;
                 _skillSourceType = null;
             }
         }
@@ -483,9 +487,82 @@ namespace DSH.Foreseeker
             }
         }
 
+        /// <summary>Adds a DOT instance (strength + duration set) to the holder's live container.</summary>
+        private static void ApplyDot(object holder, uint performerGuid, string dotId, int amount)
+        {
+            ResolveApplyRefs();
+            if (_dotLibrary == null || _skillSourceType == null)
+            {
+                return;
+            }
+
+            object container = GetMember(holder, "m_DotContainer");
+            if (container == null)
+            {
+                return;
+            }
+
+            object definition = Invoke(_dotLibrary, "GetLibraryElement", dotId);
+            if (definition == null)
+            {
+                return;
+            }
+
+            object battle = Battle;
+            object teams = battle == null ? null : GetMember(battle, "m_BattleTeams");
+            object performer = teams == null ? null : Invoke(teams, "GetActorFromActorGuid", performerGuid);
+            if (performer == null)
+            {
+                return;
+            }
+
+            Probe.SuppressDotEvents = true;
+            try
+            {
+                Invoke(container, "Add", definition, false, false, _skillSourceType, "solver", performer);
+            }
+            catch (Exception ex)
+            {
+                Log("dot add failed " + dotId + ": " + ex.GetType().Name);
+                return;
+            }
+            finally
+            {
+                Probe.SuppressDotEvents = false;
+            }
+
+            // The Add overload has no amount/duration, so stamp them on the instance it created.
+            try
+            {
+                FieldInfo listField = FindListField(container);
+                var list = listField == null ? null : listField.GetValue(container) as IList;
+                if (list == null || list.Count == 0)
+                {
+                    return;
+                }
+
+                object instance = list[list.Count - 1];
+                FieldInfo amountField = FindField(instance, "m_EffectValueChange");
+                if (amountField != null)
+                {
+                    amountField.SetValue(instance, (float)amount);
+                }
+
+                FieldInfo durationField = FindField(instance, "m_DurationAmountRemaining");
+                int duration = ToInt(GetMember(definition, "m_DurationAmount"));
+                if (durationField != null && duration > 0)
+                {
+                    durationField.SetValue(instance, duration);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("dot stamp failed " + dotId + ": " + ex.GetType().Name);
+            }
+        }
+
         /// <summary>
-        /// Applies the non-damage part of a pre-rolled result: heals, stress, movement and tokens.
-        /// DOTs are still only counted.
+        /// Applies the non-damage part of a pre-rolled result: heals, stress, movement, tokens and DOTs.
         /// </summary>
         internal static void ApplyActorResult(object actorResult, out int tokens, out int dots,
                                               out float heal, out float stress, out int move)
@@ -568,9 +645,12 @@ namespace DSH.Foreseeker
                         ApplyToken(holder, performerGuid, tokenId, amount);
                     }
 
-                    if (!string.IsNullOrEmpty(GetMember(definition, "m_DotAddId") as string))
+                    string dotId = GetMember(definition, "m_DotAddId") as string;
+                    if (!string.IsNullOrEmpty(dotId))
                     {
-                        dots += Math.Max(1, ToInt(GetMember(instance, "DotAddAmount")));
+                        int amount = Math.Max(1, ToInt(GetMember(instance, "DotAddAmount")));
+                        dots += amount;
+                        ApplyDot(holder, performerGuid, dotId, amount);
                     }
                 }
             }

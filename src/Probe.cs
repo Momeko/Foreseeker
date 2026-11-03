@@ -39,9 +39,17 @@ namespace DSH.Foreseeker
         /// </summary>
         internal static bool SuppressValidSkillsEvent;
 
+        /// <summary>While set, EventDotAdded.Trigger is skipped so sandbox DOTs never reach listeners.</summary>
+        internal static bool SuppressDotEvents;
+
         private static bool OnValidSkillsEventPre()
         {
             return !SuppressValidSkillsEvent;
+        }
+
+        private static bool OnDotEventPre()
+        {
+            return !SuppressDotEvents;
         }
 
         internal static void Emit(string line)
@@ -65,6 +73,7 @@ namespace DSH.Foreseeker
             Hook(harmony, typeof(Assets.Code.Skill.SkillCalculation), "HandleEventActorControllerCalculatedValidSkills", "OnPrecompute", null);
             Hook(harmony, typeof(Assets.Code.Actor.ActorController.ActorControllerBase), "CalculateValidSkillTargetEntries", null, "OnValidSkillsPre");
             Hook(harmony, typeof(Assets.Code.Actor.Events.EventActorControllerCalculatedValidSkills), "Trigger", null, "OnValidSkillsEventPre");
+            Hook(harmony, typeof(Assets.Code.Dot.Events.EventDotAdded), "Trigger", null, "OnDotEventPre");
 
             MethodInfo addPotential = FindAddPotentialResult();
             if (addPotential != null)
