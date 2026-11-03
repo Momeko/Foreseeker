@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
+using Assets.Code.Actor;
 using Assets.Code.Combat;
 using Assets.Code.Dot;
 using Assets.Code.Library;
@@ -687,6 +688,11 @@ namespace DSH.Foreseeker
                     }
                 }
             }
+
+            if (move != 0)
+            {
+                ApplyMovement();
+            }
         }
 
         private static object _healthMaxStat;
@@ -721,6 +727,80 @@ namespace DSH.Foreseeker
             }
 
             return ToFloat(GetMember(actor, "m_Hp"));
+        }
+
+        private static Type _positionCalcType;
+
+        /// <summary>
+        /// Applies the pending position offsets the way the game does at skill finalize:
+        /// recompute the whole team order, then renumber from rank 1. Restored by the snapshot.
+        /// </summary>
+        internal static void ApplyMovement()
+        {
+            try
+            {
+                object battle = Battle;
+                if (battle == null)
+                {
+                    return;
+                }
+
+                object teams = GetMember(battle, "m_BattleTeams");
+                var teamList = GetMember(teams, "m_Teams") as IEnumerable;
+                if (teamList == null)
+                {
+                    return;
+                }
+
+                if (_positionCalcType == null)
+                {
+                    _positionCalcType = typeof(SkillCalculation).Assembly.GetType(
+                        "Assets.Code.Actor.ActorTeamPositionCalculation");
+                }
+
+                if (_positionCalcType == null)
+                {
+                    return;
+                }
+
+                MethodInfo sort = _positionCalcType.GetMethod("SortActorsByTargetTeamPositions");
+                MethodInfo set = _positionCalcType.GetMethod("SetActorTeamPositions");
+                if (sort == null || set == null)
+                {
+                    return;
+                }
+
+                foreach (object team in teamList)
+                {
+                    var actors = GetMember(team, "m_Actors") as IEnumerable;
+                    if (actors == null)
+                    {
+                        continue;
+                    }
+
+                    var list = new List<ActorInstance>();
+                    foreach (object actor in actors)
+                    {
+                        var typed = actor as ActorInstance;
+                        if (typed != null)
+                        {
+                            list.Add(typed);
+                        }
+                    }
+
+                    if (list.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    object sorted = sort.Invoke(null, new object[] { list });
+                    set.Invoke(null, new object[] { sorted, true, true });
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("move failed: " + ex.GetType().Name + ": " + ex.Message);
+            }
         }
 
         internal static void ApplyHealthDelta(object actor, float delta)
