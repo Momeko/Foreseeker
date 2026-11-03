@@ -74,6 +74,7 @@ namespace DSH.Foreseeker
         {
             Rows.Clear();
             UtilityCache.Clear();
+            CoolingCache.Clear();
 
             object battle = GetMember(SingletonMonoBehaviour<CombatBhv>.Instance, "m_Battle");
             if (battle == null)
@@ -1332,6 +1333,47 @@ namespace DSH.Foreseeker
         }
 
         private static readonly Dictionary<string, float> UtilityCache = new Dictionary<string, float>();
+        private static readonly Dictionary<uint, HashSet<string>> CoolingCache =
+            new Dictionary<uint, HashSet<string>>();
+
+        /// <summary>Cooldowns only decide availability: a cooling skill is simply not usable.</summary>
+        private static HashSet<string> CoolingSet(object actor)
+        {
+            uint guid = ToUInt(GetMember(actor, "m_ActorGuid"));
+            HashSet<string> set;
+            if (CoolingCache.TryGetValue(guid, out set))
+            {
+                return set;
+            }
+
+            set = new HashSet<string>();
+            try
+            {
+                var list = GetMember(actor, "m_SkillCooldowns") as IEnumerable;
+                if (list != null)
+                {
+                    foreach (object instance in list)
+                    {
+                        if (instance == null || !ToBool(Invoke(instance, "GetIsCoolingDown", null)))
+                        {
+                            continue;
+                        }
+
+                        string id = GetMember(instance, "m_SkillCooldownId") as string;
+                        if (!string.IsNullOrEmpty(id))
+                        {
+                            set.Add(id);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            CoolingCache[guid] = set;
+            return set;
+        }
 
         /// <summary>How many of the actor's equipped skills can be launched from this rank.</summary>
         private static float UtilityAt(object actor, int rank)
@@ -1347,6 +1389,7 @@ namespace DSH.Foreseeker
             float total = 0f;
             try
             {
+                HashSet<string> cooling = CoolingSet(actor);
                 object library = SingletonMonoBehaviour<Library<string, ActorDataSkill>>.Instance;
                 var skills = GetMember(actor, "m_CombatSkills") as IEnumerable;
                 if (skills != null)
@@ -1362,6 +1405,12 @@ namespace DSH.Foreseeker
                         object definition = Invoke(library, "GetLibraryElement", id);
                         var ranks = GetMember(definition, "m_LaunchRanks") as IEnumerable;
                         if (ranks == null)
+                        {
+                            continue;
+                        }
+
+                        string cooldownId = GetMember(definition, "SkillCooldownId") as string;
+                        if (!string.IsNullOrEmpty(cooldownId) && cooling.Contains(cooldownId))
                         {
                             continue;
                         }
