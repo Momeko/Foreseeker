@@ -880,6 +880,15 @@ namespace DSH.Foreseeker
                             continue;
                         }
 
+                        // Taunt / guard are threat transfers; riposte pays off when the holder is
+                        // the one being attacked. Value them against the predicted incoming hit.
+                        if (tokenId == "taunt" || tokenId == "guard" || tokenId == "riposte")
+                        {
+                            float threat = ThreatTokenValue(tokenId, performer, holder, instance);
+                            total += tokenId == "riposte" ? threat * amount : threat;
+                            continue;
+                        }
+
                         if (tokenId == "weak")
                         {
                             float predicted = PredictedDamageOf(holder);
@@ -998,6 +1007,97 @@ namespace DSH.Foreseeker
 
             float result = ToFloat(value);
             return float.IsNaN(result) ? 1f : result;
+        }
+
+        private static bool TryPredictedAttack(out uint attackerGuid, out uint victimGuid, out float damage)
+        {
+            attackerGuid = 0;
+            victimGuid = 0;
+            damage = 0f;
+
+            foreach (KeyValuePair<uint, float> pair in ForeseekerPlugin.PredictedDamage)
+            {
+                if (pair.Value <= damage)
+                {
+                    continue;
+                }
+
+                uint victim;
+                if (!ForeseekerPlugin.PredictedTarget.TryGetValue(pair.Key, out victim))
+                {
+                    continue;
+                }
+
+                attackerGuid = pair.Key;
+                victimGuid = victim;
+                damage = pair.Value;
+            }
+
+            return damage > 0f;
+        }
+
+        /// <summary>
+        /// Taunt/guard move the incoming hit from a squishier unit to a sturdier one: value is the
+        /// damage avoided minus the damage taken by the new target. Riposte counters when hit.
+        /// </summary>
+        private static float ThreatTokenValue(string tokenId, object performer, object holder, object instance)
+        {
+            uint holderGuid = ToUInt(GetMember(holder, "m_ActorGuid"));
+
+            uint attackerGuid;
+            uint predictedVictim;
+            float damage;
+            bool hasPrediction = TryPredictedAttack(out attackerGuid, out predictedVictim, out damage);
+
+            if (tokenId == "riposte")
+            {
+                float counter = ExpectedHit(holder);
+                if (counter <= 0f)
+                {
+                    return 0f;
+                }
+
+                float chance = hasPrediction && predictedVictim == holderGuid ? 1f : 0.3f;
+                return 5f * counter * chance / Mathf.Max(1f, _avgEnemyMaxHp);
+            }
+
+            if (!hasPrediction)
+            {
+                return 0.3f;
+            }
+
+            uint tankGuid = holderGuid;
+            uint fromGuid = predictedVictim;
+
+            if (tokenId == "guard")
+            {
+                tankGuid = ToUInt(GetMember(instance, "m_SourceActorGuid"));
+                if (tankGuid == 0)
+                {
+                    tankGuid = holderGuid;
+                }
+
+                fromGuid = holderGuid;
+            }
+
+            if (fromGuid == tankGuid || fromGuid != predictedVictim)
+            {
+                return 0f;
+            }
+
+            object fromActor = Invoke(_teams, "GetActorFromActorGuid", fromGuid);
+            object tankActor = tankGuid == holderGuid ? holder : Invoke(_teams, "GetActorFromActorGuid", tankGuid);
+            if (fromActor == null || tankActor == null)
+            {
+                return 0f;
+            }
+
+            float fromMax = Mathf.Max(1f, Stat(fromActor, _healthMaxStat, "m_Hp"));
+            float tankMax = Mathf.Max(1f, Stat(tankActor, _healthMaxStat, "m_Hp"));
+
+            float avoided = Mitigate(fromActor, damage) * 5f / fromMax;
+            float incurred = Mitigate(tankActor, damage) * 5f / tankMax;
+            return avoided - incurred;
         }
 
         private static float ExpectedHit(object actor)
