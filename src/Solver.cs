@@ -123,6 +123,10 @@ namespace DSH.Foreseeker
                     continue;
                 }
 
+                var targetRows = new List<Row>();
+                float totalDamage = 0f;
+                object firstResult = null;
+
                 for (int i = 0; i < guids.Count; i++)
                 {
                     uint targetGuid = guids[i];
@@ -173,7 +177,41 @@ namespace DSH.Foreseeker
                         damage = 0f;
                     }
 
-                    Rows.Add(Score(actor, target, skillId, targetGuid, damage, crit, hit, matchedResult));
+                    if (firstResult == null)
+                    {
+                        firstResult = matchedResult;
+                    }
+
+                    totalDamage += damage;
+                    targetRows.Add(Score(actor, target, skillId, targetGuid, damage, crit, hit, matchedResult));
+                }
+
+                // An AOE that always hits the whole team is the same action whichever slot you
+                // click, so collapse its per-target rows into one.
+                if (targetRows.Count > 1 && IsAoeEntry(results, actorGuid, skillId, guids))
+                {
+                    float merged = 0f;
+                    for (int r = 0; r < targetRows.Count; r++)
+                    {
+                        merged += targetRows[r].Score;
+                    }
+
+                    Rows.Add(new Row
+                    {
+                        Label = SkillName(skillId) + " → 敌方全体"
+                                + (totalDamage > 0f ? "   伤害合计" + totalDamage.ToString("F0") : string.Empty)
+                                + EffectsText(firstResult),
+                        Score = merged,
+                        Tint = targetRows[0].Tint,
+                        SkillId = skillId,
+                        TargetGuid = 0,
+                        Damage = 0f,
+                        ActorResult = null
+                    });
+                }
+                else
+                {
+                    Rows.AddRange(targetRows);
                 }
             }
 
@@ -283,6 +321,43 @@ namespace DSH.Foreseeker
         /// tokens are valued by their own positive/negative tag, DOTs are always bad for the
         /// holder, heals are good for the holder — then flipped for the opposing team.
         /// </summary>
+        /// <summary>True when the skill's pre-rolled result already covers every valid target.</summary>
+        private static bool IsAoeEntry(IDictionary results, uint actorGuid, string skillId, IReadOnlyList<uint> guids)
+        {
+            if (guids == null || guids.Count < 2)
+            {
+                return false;
+            }
+
+            object input = new SkillCalculation.Input(actorGuid, skillId, guids[0]);
+            if (!results.Contains(input))
+            {
+                return false;
+            }
+
+            var actorResults = GetMember(results[input], "ActorResults") as IEnumerable;
+            if (actorResults == null)
+            {
+                return false;
+            }
+
+            var covered = new HashSet<uint>();
+            foreach (object mapped in actorResults)
+            {
+                covered.Add(ToUInt(GetMember(mapped, "m_TargetActorGuid")));
+            }
+
+            for (int i = 0; i < guids.Count; i++)
+            {
+                if (!covered.Contains(guids[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private static void MarkDoomedEnemies(object teams)
         {
             _doomed.Clear();
@@ -355,6 +430,67 @@ namespace DSH.Foreseeker
             return total;
         }
 
+        /// <summary>
+        /// Cheap mitigation model for the incoming hit: dodge negates it, block halves it,
+        /// vulnerable amplifies it. This is what makes self-buff skills worth something.
+        /// </summary>
+        private static float Mitigate(object actor, float damage)
+        {
+            if (actor == null || damage <= 0f)
+            {
+                return damage;
+            }
+
+            object container = GetMember(actor, "m_TokenContainer");
+            if (container == null)
+            {
+                return damage;
+            }
+
+            int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
+            bool dodge = false;
+            bool block = false;
+            bool vulnerable = false;
+
+            for (int i = 0; i < count; i++)
+            {
+                object instance = Invoke(container, "GetInstanceAtIndex", i);
+                object definition = instance == null ? null : GetMember(instance, "Definition");
+                string id = definition == null ? null : GetMember(definition, "m_Id") as string;
+
+                if (id == "dodge" || id == "dodge_plus")
+                {
+                    dodge = true;
+                }
+                else if (id == "block" || id == "block_plus")
+                {
+                    block = true;
+                }
+                else if (id == "vulnerable")
+                {
+                    vulnerable = true;
+                }
+            }
+
+            if (dodge)
+            {
+                return 0f;
+            }
+
+            float factor = 1f;
+            if (block)
+            {
+                factor *= 0.5f;
+            }
+
+            if (vulnerable)
+            {
+                factor *= 1.5f;
+            }
+
+            return damage * factor;
+        }
+
         private static string SkillName(string skillId)
         {
             string name = SaveReader.SkillName(skillId);
@@ -392,11 +528,7 @@ namespace DSH.Foreseeker
                 return enemyName + "（" + position + "）";
             }
 
-            if (!string.IsNullOrEmpty(className) && !string.IsNullOrEmpty(custom) && custom != className)
-            {
-                return custom + "（" + className + "）";
-            }
-
+            // Our heroes are shown by class only; custom names would just add noise.
             if (!string.IsNullOrEmpty(className))
             {
                 return className;
@@ -554,6 +686,13 @@ namespace DSH.Foreseeker
                         {
                             total -= holderSign * weight * amount;
                         }
+                        else if (holderSign < 0f)
+                        {
+                            // Untagged token on an enemy: most of these are debuffs (e.g. 破绽),
+                            // so give it a small offensive value and note the id once.
+                            total += 0.6f * amount;
+                            LogUnknownToken(tokenId);
+                        }
 
                         continue;
                     }
@@ -618,6 +757,22 @@ namespace DSH.Foreseeker
                     return 0.9f;
                 default:
                     return 0.6f;
+            }
+        }
+
+        private static readonly HashSet<string> UnknownTokens = new HashSet<string>();
+
+        private static void LogUnknownToken(string tokenId)
+        {
+            if (!UnknownTokens.Add(tokenId))
+            {
+                return;
+            }
+
+            Action<string> sink = RandomTrace.Sink;
+            if (sink != null)
+            {
+                sink("S TOKENUNKNOWN id=" + tokenId);
             }
         }
 
@@ -825,6 +980,7 @@ namespace DSH.Foreseeker
                         if (incoming > 0f && victimGuid != 0)
                         {
                             object victim = Invoke(_teams, "GetActorFromActorGuid", victimGuid);
+                            incoming = Mitigate(victim, incoming);
                             float maxHp = Mathf.Max(1f, Stat(victim, _healthMaxStat, "m_Hp"));
                             _lookaheadPenalties[row.SkillId + "@" + row.TargetGuid] = 5f * (incoming / maxHp);
                         }
