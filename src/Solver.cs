@@ -749,6 +749,79 @@ namespace DSH.Foreseeker
                 return 0f;
             }
 
+            // Damage tokens multiply: 10 damage with strength + crit on a vulnerable target is
+            // 10 * 1.5 * 1.5 * 1.5, not 10 * (1 + 0.5 + 0.5 + 0.5). Value them as one bundle.
+            int grantedStrength = 0;
+            int grantedCrit = 0;
+            int grantedVulnerable = 0;
+            object vulnerableHolder = null;
+
+            foreach (object output in outputs)
+            {
+                object scanHolder = GetMember(output, "m_TargetActor");
+                if (scanHolder == null)
+                {
+                    continue;
+                }
+
+                bool holderIsAlly = IsAlly(performer, scanHolder);
+                var scanInstances = GetMember(output, "EffectInstancesToApply") as IEnumerable;
+                if (scanInstances == null)
+                {
+                    continue;
+                }
+
+                foreach (object instance in scanInstances)
+                {
+                    object definition = GetMember(instance, "EffectDefinition");
+                    string tokenId = definition == null ? null : GetMember(definition, "m_TokenAddId") as string;
+                    if (string.IsNullOrEmpty(tokenId))
+                    {
+                        continue;
+                    }
+
+                    if (tokenId == "strength")
+                    {
+                        grantedStrength += holderIsAlly ? 1 : -1;
+                    }
+                    else if (tokenId == "crit")
+                    {
+                        grantedCrit += holderIsAlly ? 1 : -1;
+                    }
+                    else if (tokenId == "vulnerable")
+                    {
+                        if (holderIsAlly)
+                        {
+                            grantedVulnerable -= 1;
+                        }
+                        else
+                        {
+                            grantedVulnerable += 1;
+                            vulnerableHolder = scanHolder;
+                        }
+                    }
+                }
+            }
+
+            if (grantedStrength != 0 || grantedCrit != 0 || grantedVulnerable != 0)
+            {
+                float hit = ExpectedHit(performer);
+                if (hit > 0f)
+                {
+                    int s0 = HasToken(performer, "strength") ? 1 : 0;
+                    int c0 = HasToken(performer, "crit") ? 1 : 0;
+                    int v0 = vulnerableHolder != null && HasToken(vulnerableHolder, "vulnerable") ? 1 : 0;
+
+                    float before = Mathf.Pow(1.5f, s0) * Mathf.Pow(1.5f, c0) * Mathf.Pow(1.5f, v0);
+                    float after = Mathf.Pow(1.5f, s0 + grantedStrength)
+                                  * Mathf.Pow(1.5f, c0 + grantedCrit)
+                                  * Mathf.Pow(1.5f, v0 + grantedVulnerable);
+
+                    float gain = hit * (after - before);
+                    total += 5f * gain / Mathf.Max(1f, _avgEnemyMaxHp);
+                }
+            }
+
             foreach (object output in outputs)
             {
                 object holder = GetMember(output, "m_TargetActor");
@@ -783,35 +856,20 @@ namespace DSH.Foreseeker
                         int polarity = TokenPolarity(tokenId);
                         float weight = TokenWeight(tokenId);
 
-                        // Offensive tokens are worth half of one real hit, not a flat constant.
-                        if (tokenId == "strength" || tokenId == "crit")
+                        // strength / crit / vulnerable are valued together in the multiplicative
+                        // pass above; counting them again here would double-dip.
+                        if (tokenId == "strength" || tokenId == "crit" || tokenId == "vulnerable")
                         {
-                            float hit = ExpectedHit(holder);
-                            if (hit > 0f)
-                            {
-                                float gain = 0.5f * hit * amount;
-                                total += holderSign * 5f * gain / Mathf.Max(1f, _avgEnemyMaxHp);
-                                continue;
-                            }
+                            continue;
                         }
-                        else if (tokenId == "weak")
+
+                        if (tokenId == "weak")
                         {
                             float predicted = PredictedDamageOf(holder);
                             if (predicted > 0f)
                             {
                                 float gain = 0.5f * predicted * amount;
                                 total += 5f * gain / PredictedVictimMaxHp(holder) * DodgeFactor(holder);
-                                continue;
-                            }
-                        }
-                        else if (tokenId == "vulnerable")
-                        {
-                            float hit = ExpectedHit(performer);
-                            if (hit > 0f)
-                            {
-                                float holderMax = Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
-                                float gain = 0.5f * hit * amount;
-                                total += 5f * gain / holderMax * DodgeFactor(holder);
                                 continue;
                             }
                         }
