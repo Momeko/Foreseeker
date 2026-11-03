@@ -29,6 +29,8 @@ namespace DSH.Foreseeker
         private static readonly HashSet<uint> _doomed = new HashSet<uint>();
 
         private static object _healthMaxStat;
+        private static object _healthDamageStat;
+        private static float _avgEnemyMaxHp = 13f;
         private static object _stressMaxStat;
         private static bool _statsResolved;
         private static object _teams;
@@ -368,6 +370,9 @@ namespace DSH.Foreseeker
                 return;
             }
 
+            float hpSum = 0f;
+            int hpCount = 0;
+
             foreach (object team in teamList)
             {
                 if (ToInt(GetMember(team, "m_TeamIndex")) == 0)
@@ -389,12 +394,20 @@ namespace DSH.Foreseeker
                     }
 
                     float hp = ToFloat(GetMember(actor, "m_Hp"));
+                    hpSum += Mathf.Max(1f, Stat(actor, _healthMaxStat, "m_Hp"));
+                    hpCount++;
+
                     float dot = PendingDotDamage(actor);
                     if (hp > 0f && dot > 0f && hp <= dot)
                     {
                         _doomed.Add(ToUInt(GetMember(actor, "m_ActorGuid")));
                     }
                 }
+            }
+
+            if (hpCount > 0)
+            {
+                _avgEnemyMaxHp = Mathf.Max(1f, hpSum / hpCount);
             }
         }
 
@@ -770,6 +783,39 @@ namespace DSH.Foreseeker
                         int polarity = TokenPolarity(tokenId);
                         float weight = TokenWeight(tokenId);
 
+                        // Offensive tokens are worth half of one real hit, not a flat constant.
+                        if (tokenId == "strength" || tokenId == "crit")
+                        {
+                            float hit = ExpectedHit(holder);
+                            if (hit > 0f)
+                            {
+                                float gain = 0.5f * hit * amount;
+                                total += holderSign * 5f * gain / Mathf.Max(1f, _avgEnemyMaxHp);
+                                continue;
+                            }
+                        }
+                        else if (tokenId == "weak")
+                        {
+                            float predicted = PredictedDamageOf(holder);
+                            if (predicted > 0f)
+                            {
+                                float gain = 0.5f * predicted * amount;
+                                total += 5f * gain / PredictedVictimMaxHp(holder) * DodgeFactor(holder);
+                                continue;
+                            }
+                        }
+                        else if (tokenId == "vulnerable")
+                        {
+                            float hit = ExpectedHit(performer);
+                            if (hit > 0f)
+                            {
+                                float holderMax = Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
+                                float gain = 0.5f * hit * amount;
+                                total += 5f * gain / holderMax * DodgeFactor(holder);
+                                continue;
+                            }
+                        }
+
                         if (polarity > 0)
                         {
                             // A defensive buff on a healthy hero is worth much less than one
@@ -860,6 +906,38 @@ namespace DSH.Foreseeker
             }
 
             return total;
+        }
+
+        private static float ExpectedHit(object actor)
+        {
+            if (actor == null || _healthDamageStat == null)
+            {
+                return 0f;
+            }
+
+            object value = Invoke(actor, "GetClampedStatValue", _healthDamageStat);
+            float damage = value == null ? 0f : ToFloat(value);
+            return float.IsNaN(damage) || damage <= 0f ? 0f : damage;
+        }
+
+        private static float PredictedDamageOf(object actor)
+        {
+            uint guid = ToUInt(GetMember(actor, "m_ActorGuid"));
+            float damage;
+            return ForeseekerPlugin.PredictedDamage.TryGetValue(guid, out damage) ? damage : 0f;
+        }
+
+        private static float PredictedVictimMaxHp(object actor)
+        {
+            uint guid = ToUInt(GetMember(actor, "m_ActorGuid"));
+            uint victimGuid;
+            if (ForeseekerPlugin.PredictedTarget.TryGetValue(guid, out victimGuid))
+            {
+                object victim = Invoke(_teams, "GetActorFromActorGuid", victimGuid);
+                return Mathf.Max(1f, Stat(victim, _healthMaxStat, "m_Hp"));
+            }
+
+            return 13f;
         }
 
         /// <summary>Relative worth of one stack of a token, in "hit points of a 13 HP enemy" units.</summary>
@@ -995,6 +1073,7 @@ namespace DSH.Foreseeker
 
                 _healthMaxStat = statType.GetField("HEALTH_MAX", BindingFlags.Public | BindingFlags.Static).GetValue(null);
                 _stressMaxStat = statType.GetField("STRESS_MAX", BindingFlags.Public | BindingFlags.Static).GetValue(null);
+                _healthDamageStat = statType.GetField("HEALTH_DAMAGE", BindingFlags.Public | BindingFlags.Static).GetValue(null);
             }
             catch
             {
