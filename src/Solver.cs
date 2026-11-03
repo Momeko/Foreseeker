@@ -3,7 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using Assets.Code.Combat;
+using Assets.Code.Library;
 using Assets.Code.Skill;
+using Assets.Code.Token;
 using Assets.Code.Utils;
 using UnityEngine;
 
@@ -126,21 +128,21 @@ namespace DSH.Foreseeker
                     float damage = 0f;
                     bool crit = false;
                     bool hit = true;
-                    int effects = 0;
                     bool found = false;
+                    object matchedResult = null;
 
                     var actorResults = GetMember(result, "ActorResults") as IEnumerable;
                     if (actorResults != null)
                     {
                         foreach (object mapped in actorResults)
                         {
-                            effects++;
                             if (ToUInt(GetMember(mapped, "m_TargetActorGuid")) != targetGuid)
                             {
                                 continue;
                             }
 
                             found = true;
+                            matchedResult = mapped;
                             damage = ToFloat(GetMember(mapped, "HealthDamage"));
                             crit = ToBool(GetMember(mapped, "IsCrit"));
                             object hitValue = GetMember(mapped, "IsHit");
@@ -154,7 +156,7 @@ namespace DSH.Foreseeker
                         damage = 0f;
                     }
 
-                    Rows.Add(Score(actor, target, skillId, targetGuid, damage, crit, hit, effects));
+                    Rows.Add(Score(actor, target, skillId, targetGuid, damage, crit, hit, matchedResult));
                 }
             }
 
@@ -167,7 +169,7 @@ namespace DSH.Foreseeker
         }
 
         private static Row Score(object performer, object target, string skillId, uint targetGuid,
-                                float damage, bool crit, bool hit, int effects)
+                                float damage, bool crit, bool hit, object actorResult)
         {
             bool targetIsAlly = IsAlly(performer, target);
 
@@ -183,18 +185,144 @@ namespace DSH.Foreseeker
                 score += targetIsAlly ? -1000f : 30f;
             }
 
+            int effects;
+            score += EffectValue(performer, actorResult, out effects);
+
             string targetName = (GetMember(target, "m_ActorName") as string) ?? ("#" + targetGuid);
             string label = ShortSkill(skillId) + " → " + targetName
                            + "  " + damage.ToString("F0")
                            + (crit ? "!" : string.Empty)
                            + (hit ? string.Empty : " miss")
-                           + (effects > 1 ? "  fx" + effects : string.Empty)
+                           + (effects > 0 ? "  fx" + effects : string.Empty)
                            + "  [" + score.ToString("F1") + "]";
 
             Color tint = targetIsAlly ? (after <= 0f ? new Color(1f, 0.4f, 0.4f) : new Color(0.8f, 0.9f, 1f))
                                       : new Color(1f, 0.95f, 0.8f);
 
             return new Row { Text = label, Score = score, Tint = tint };
+        }
+
+        /// <summary>
+        /// Folds the effects this result would apply into the score:
+        /// tokens are valued by their own positive/negative tag, DOTs are always bad for the
+        /// holder, heals are good for the holder — then flipped for the opposing team.
+        /// </summary>
+        private static float EffectValue(object performer, object actorResult, out int count)
+        {
+            count = 0;
+            if (actorResult == null)
+            {
+                return 0f;
+            }
+
+            float total = 0f;
+
+            object container = GetMember(actorResult, "m_AppliedEffectsOutputContainer");
+            var outputs = GetMember(container, "Outputs") as IEnumerable;
+            if (outputs == null)
+            {
+                return 0f;
+            }
+
+            foreach (object output in outputs)
+            {
+                object holder = GetMember(output, "m_TargetActor");
+                if (holder == null)
+                {
+                    continue;
+                }
+
+                // +1 means "good for the holder is good for us" (ally); -1 for enemies.
+                float holderSign = IsAlly(performer, holder) ? 1f : -1f;
+
+                var instances = GetMember(output, "EffectInstancesToApply") as IEnumerable;
+                if (instances == null)
+                {
+                    continue;
+                }
+
+                foreach (object instance in instances)
+                {
+                    object definition = GetMember(instance, "EffectDefinition");
+                    if (definition == null)
+                    {
+                        continue;
+                    }
+
+                    count++;
+
+                    string tokenId = GetMember(definition, "m_TokenAddId") as string;
+                    if (!string.IsNullOrEmpty(tokenId))
+                    {
+                        int amount = Math.Max(1, ToInt(GetMember(instance, "TokenAddAmount")));
+                        int polarity = TokenPolarity(tokenId);
+                        if (polarity > 0)
+                        {
+                            total += holderSign * 1.5f * amount;
+                        }
+                        else if (polarity < 0)
+                        {
+                            total -= holderSign * 1.5f * amount;
+                        }
+
+                        continue;
+                    }
+
+                    string dotId = GetMember(definition, "m_DotAddId") as string;
+                    if (!string.IsNullOrEmpty(dotId))
+                    {
+                        int amount = Math.Max(1, ToInt(GetMember(instance, "DotAddAmount")));
+                        total -= holderSign * 1.0f * amount;
+                        continue;
+                    }
+
+                    float heal = ToFloat(GetMember(instance, "HealthHealAmount"));
+                    if (heal > 0f)
+                    {
+                        float maxHp = Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
+                        total += holderSign * 5f * (heal / maxHp);
+                    }
+                }
+            }
+
+            return total;
+        }
+
+        private static readonly Dictionary<string, int> TokenPolarityCache = new Dictionary<string, int>();
+
+        /// <summary>1 = beneficial token, -1 = harmful, 0 = unknown.</summary>
+        private static int TokenPolarity(string tokenId)
+        {
+            int cached;
+            if (TokenPolarityCache.TryGetValue(tokenId, out cached))
+            {
+                return cached;
+            }
+
+            int value = 0;
+            try
+            {
+                object library = SingletonMonoBehaviour<Library<string, TokenDefinition>>.Instance;
+                object definition = Invoke(library, "GetLibraryElement", tokenId);
+                if (definition != null)
+                {
+                    if (ToBool(GetMember(definition, "IsPositive")))
+                    {
+                        value = 1;
+                    }
+                    else if (ToBool(GetMember(definition, "IsNegative")))
+                    {
+                        value = -1;
+                    }
+                }
+            }
+            catch
+            {
+                value = 0;
+            }
+
+            TokenPolarityCache[tokenId] = value;
+            return value;
         }
 
         private static bool IsAlly(object a, object b)
