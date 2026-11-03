@@ -21,11 +21,12 @@ namespace DSH.Foreseeker
         private const BindingFlags Any =
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-        internal static bool Visible;
+        internal static bool Visible = true;
 
         private static float _nextRefresh;
         private static string _header = "solver: idle";
         private static readonly List<Row> Rows = new List<Row>();
+        private static readonly HashSet<uint> _doomed = new HashSet<uint>();
 
         private static object _healthMaxStat;
         private static object _stressMaxStat;
@@ -90,6 +91,8 @@ namespace DSH.Foreseeker
                 _header = "敌方行动中 · 等待我方回合";
                 return;
             }
+
+            MarkDoomedEnemies(teams);
 
             object controller = GetMember(actor, "Controller") ?? GetMember(actor, "m_ActorController");
             var entries = Invoke(controller, "GetValidSkillTargetEntries", null) as IEnumerable;
@@ -191,6 +194,21 @@ namespace DSH.Foreseeker
         {
             bool targetIsAlly = IsAlly(performer, target);
 
+            // Already dead on its feet: its DOT kills it before it acts, so hitting it is wasted.
+            if (!targetIsAlly && _doomed.Contains(targetGuid))
+            {
+                return new Row
+                {
+                    Label = SkillName(skillId) + " → " + ActorName(target) + "   它会被 DOT 打死，浪费",
+                    Score = -1f,
+                    Tint = new Color(0.55f, 0.55f, 0.55f),
+                    SkillId = skillId,
+                    TargetGuid = targetGuid,
+                    Damage = 0f,
+                    ActorResult = null
+                };
+            }
+
             float maxHp = Mathf.Max(1f, Stat(target, _healthMaxStat, "m_Hp"));
             float hp = ToFloat(GetMember(target, "m_Hp"));
             float after = Mathf.Max(0f, hp - damage);
@@ -250,6 +268,78 @@ namespace DSH.Foreseeker
         /// tokens are valued by their own positive/negative tag, DOTs are always bad for the
         /// holder, heals are good for the holder — then flipped for the opposing team.
         /// </summary>
+        private static void MarkDoomedEnemies(object teams)
+        {
+            _doomed.Clear();
+
+            var teamList = GetMember(teams, "m_Teams") as IEnumerable;
+            if (teamList == null)
+            {
+                return;
+            }
+
+            foreach (object team in teamList)
+            {
+                if (ToInt(GetMember(team, "m_TeamIndex")) == 0)
+                {
+                    continue;
+                }
+
+                var actors = GetMember(team, "m_Actors") as IEnumerable;
+                if (actors == null)
+                {
+                    continue;
+                }
+
+                foreach (object actor in actors)
+                {
+                    if (actor == null || !ToBool(GetMember(actor, "m_IsLiving")))
+                    {
+                        continue;
+                    }
+
+                    float hp = ToFloat(GetMember(actor, "m_Hp"));
+                    float dot = PendingDotDamage(actor);
+                    if (hp > 0f && dot > 0f && hp <= dot)
+                    {
+                        _doomed.Add(ToUInt(GetMember(actor, "m_ActorGuid")));
+                    }
+                }
+            }
+        }
+
+        /// <summary>Damage the actor takes from its own DOTs when its next turn starts.</summary>
+        private static float PendingDotDamage(object actor)
+        {
+            object container = GetMember(actor, "m_DotContainer");
+            if (container == null)
+            {
+                return 0f;
+            }
+
+            int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
+            float total = 0f;
+
+            for (int i = 0; i < count; i++)
+            {
+                object instance = Invoke(container, "GetInstanceAtIndex", i);
+                if (instance == null)
+                {
+                    continue;
+                }
+
+                float amount = ToFloat(GetMember(instance, "m_EffectValueChange"));
+                if (float.IsNaN(amount) || amount <= 0f)
+                {
+                    amount = 1f;
+                }
+
+                total += amount;
+            }
+
+            return total;
+        }
+
         private static string SkillName(string skillId)
         {
             string name = SaveReader.SkillName(skillId);
