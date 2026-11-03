@@ -213,6 +213,21 @@ namespace DSH.Foreseeker
             float hp = ToFloat(GetMember(target, "m_Hp"));
             float after = Mathf.Max(0f, hp - damage);
 
+            // Corpses cannot act, so spending an action on one is the worst option available.
+            if (!targetIsAlly && (hp <= 0f || !ToBool(GetMember(target, "m_IsLiving"))))
+            {
+                return new Row
+                {
+                    Label = SkillName(skillId) + " → " + ActorName(target) + "   尸体，不构成威胁",
+                    Score = -5f,
+                    Tint = new Color(0.50f, 0.50f, 0.50f),
+                    SkillId = skillId,
+                    TargetGuid = targetGuid,
+                    Damage = 0f,
+                    ActorResult = null
+                };
+            }
+
             // Ally damage is a cost, enemy damage is a gain; a kill is worth much more.
             float sign = targetIsAlly ? -1f : 1f;
             float score = sign * 5f * (damage / maxHp);
