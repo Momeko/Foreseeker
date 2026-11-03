@@ -47,6 +47,8 @@ namespace DSH.Foreseeker
             public uint TargetGuid;
             public float Damage;
             public object ActorResult;
+            public List<Row> Parts;
+            public string TargetName;
         }
 
         internal static void Refresh()
@@ -201,17 +203,30 @@ namespace DSH.Foreseeker
                         merged += targetRows[r].Score;
                     }
 
+                    string bestTarget = string.Empty;
+                    float bestScore = float.MinValue;
+                    for (int t = 0; t < targetRows.Count; t++)
+                    {
+                        if (targetRows[t].Score > bestScore)
+                        {
+                            bestScore = targetRows[t].Score;
+                            bestTarget = targetRows[t].TargetName;
+                        }
+                    }
+
                     Rows.Add(new Row
                     {
-                        Label = SkillName(skillId) + " → 敌方全体"
+                        Label = SkillName(skillId) + " → 敌方全体（" + targetRows.Count + " 目标）"
                                 + (totalDamage > 0f ? "   伤害合计" + totalDamage.ToString("F0") : string.Empty)
+                                + (string.IsNullOrEmpty(bestTarget) ? string.Empty : "   最大收益：" + bestTarget)
                                 + EffectsText(firstResult),
                         Score = merged,
                         Tint = targetRows[0].Tint,
                         SkillId = skillId,
                         TargetGuid = 0,
                         Damage = 0f,
-                        ActorResult = null
+                        ActorResult = null,
+                        Parts = targetRows
                     });
                 }
                 else
@@ -317,7 +332,8 @@ namespace DSH.Foreseeker
                 SkillId = skillId,
                 TargetGuid = targetGuid,
                 Damage = damage,
-                ActorResult = actorResult
+                ActorResult = actorResult,
+                TargetName = ActorName(target)
             };
         }
 
@@ -1596,7 +1612,7 @@ namespace DSH.Foreseeker
                 for (int i = 0; i < limit; i++)
                 {
                     Row row = Rows[i];
-                    if (row.ActorResult == null)
+                    if (row.ActorResult == null && row.Parts == null)
                     {
                         continue;
                     }
@@ -1608,15 +1624,26 @@ namespace DSH.Foreseeker
                             continue;
                         }
 
-                        object target = Invoke(_teams, "GetActorFromActorGuid", row.TargetGuid);
-                        SimState.ApplyDamage(target, row.Damage);
+                        // An AOE applies to every one of its targets; everything else is one hit.
+                        List<Row> parts = row.Parts ?? new List<Row> { row };
+                        for (int p = 0; p < parts.Count; p++)
+                        {
+                            Row part = parts[p];
+                            if (part.ActorResult == null || part.Damage <= 0f)
+                            {
+                                continue;
+                            }
 
-                        int tokens;
-                        int dots;
-                        float heal;
-                        float stress;
-                        int move;
-                        SimState.ApplyActorResult(row.ActorResult, out tokens, out dots, out heal, out stress, out move);
+                            object partTarget = Invoke(_teams, "GetActorFromActorGuid", part.TargetGuid);
+                            SimState.ApplyDamage(partTarget, part.Damage);
+
+                            int tk;
+                            int dt;
+                            float hl;
+                            float st;
+                            int mv;
+                            SimState.ApplyActorResult(part.ActorResult, out tk, out dt, out hl, out st, out mv);
+                        }
 
                         float incoming = SimState.PeekIncoming();
                         uint victimGuid = SimState.PeekIncomingVictim();
