@@ -654,28 +654,57 @@ namespace DSH.Foreseeker
                     return "enemy=" + enemyGuid + " skills=0";
                 }
 
-                Invoke(controller, "CalculateValidSkillTargetEntries", skillIds, true);
+                // false = build the entry list only. true would fire the precompute event and the
+                // game hides the current actor's skill bar.
+                Invoke(controller, "CalculateValidSkillTargetEntries", skillIds, false);
 
-                IDictionary results = GetMember(GetMember(battle, "m_BattleSkillCalculation"),
-                                                "m_PotentialResults") as IDictionary;
+                var entries = GetMember(controller, "m_SkillTargetEntries") as IEnumerable;
+                if (entries == null)
+                {
+                    return "enemy=" + enemyGuid + " entries=none";
+                }
+
+                object teams = GetMember(battle, "m_BattleTeams");
+                object turnOrder = GetMember(battle, "m_BattleTurnOrder");
+                object tracking = GetMember(battle, "m_BattleTracking");
+                object temp = Activator.CreateInstance(typeof(SkillCalculation), teams, turnOrder, tracking);
+                MethodInfo addPotential = FindAddPotential();
+                if (addPotential == null)
+                {
+                    return "enemy=" + enemyGuid + " addPotential=none";
+                }
+
+                int pairs = 0;
+                foreach (object entry in entries)
+                {
+                    string skill = GetMember(entry, "m_SkillId") as string;
+                    var guids = GetMember(entry, "m_ValidTargetActorGuids") as IReadOnlyList<uint>;
+                    if (string.IsNullOrEmpty(skill) || guids == null)
+                    {
+                        continue;
+                    }
+
+                    for (int i = 0; i < guids.Count; i++)
+                    {
+                        object input = new SkillCalculation.Input(enemyGuid, skill, guids[i]);
+                        addPotential.Invoke(temp, new object[] { input, new List<uint> { guids[i] } });
+                        pairs++;
+                    }
+                }
+
+                IDictionary results = GetMember(temp, "m_PotentialResults") as IDictionary;
                 if (results == null)
                 {
                     return "enemy=" + enemyGuid + " results=none";
                 }
 
-                int count = 0;
                 string best = "none";
                 float bestDamage = -1f;
+                int count = 0;
 
                 foreach (DictionaryEntry pair in results)
                 {
-                    object input = pair.Key;
-                    if (ToUInt(GetMember(input, "m_PerformerGuid")) != enemyGuid)
-                    {
-                        continue;
-                    }
-
-                    string skill = GetMember(input, "m_SelectedSkillId") as string;
+                    string skill = GetMember(pair.Key, "m_SelectedSkillId") as string;
                     var actorResults = GetMember(pair.Value, "ActorResults") as IEnumerable;
                     if (actorResults == null)
                     {
@@ -702,12 +731,31 @@ namespace DSH.Foreseeker
 
                 string name = GetMember(enemy, "m_ActorName") as string;
                 return "enemy=" + (string.IsNullOrEmpty(name) ? "#" + enemyGuid : name)
-                       + " results=" + count + " best=" + best;
+                       + " pairs=" + pairs + " results=" + count + " best=" + best;
             }
             catch (Exception ex)
             {
-                return "enemy=error:" + ex.GetType().Name;
+                return "enemy=error:" + ex.GetType().Name + ":" + ex.Message;
             }
+        }
+
+        private static MethodInfo FindAddPotential()
+        {
+            foreach (MethodInfo method in typeof(SkillCalculation).GetMethods(Any))
+            {
+                if (method.Name != "AddPotentialResult")
+                {
+                    continue;
+                }
+
+                ParameterInfo[] parameters = method.GetParameters();
+                if (parameters.Length == 2 && parameters[1].ParameterType == typeof(IReadOnlyList<uint>))
+                {
+                    return method;
+                }
+            }
+
+            return null;
         }
 
         private static object FindLivingEnemy(object battle, uint currentGuid)
