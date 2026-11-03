@@ -170,10 +170,11 @@ namespace DSH.Foreseeker
             ApplyLookahead();
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
 
-            string name = (GetMember(actor, "m_ActorName") as string) ?? ("#" + actorGuid);
-            _header = "solver: " + name + "  round=" + ToInt(GetMember(battle, "CurrentRound"))
-                      + " turn=" + ToInt(GetMember(battle, "CurrentTurn"))
-                      + "  options=" + plans;
+            string name = ActorName(actor);
+            _header = "求解器 · " + name
+                      + " · 第" + ToInt(GetMember(battle, "CurrentRound")) + "回合"
+                      + " 第" + (ToInt(GetMember(battle, "CurrentTurn")) + 1) + "手"
+                      + " · " + plans + " 个选择 · 评分越高越好";
         }
 
         private static Row Score(object performer, object target, string skillId, uint targetGuid,
@@ -205,7 +206,7 @@ namespace DSH.Foreseeker
                         object victim = Invoke(_teams, "GetActorFromActorGuid", victimGuid);
                         float victimMax = Mathf.Max(1f, Stat(victim, _healthMaxStat, "m_Hp"));
                         score += 5f * (avoided / victimMax);
-                        avoidedText = " -in" + avoided.ToString("F0");
+                        avoidedText = "  少挨" + avoided.ToString("F0");
                     }
                 }
             }
@@ -213,12 +214,11 @@ namespace DSH.Foreseeker
             int effects;
             score += EffectValue(performer, actorResult, out effects);
 
-            string targetName = (GetMember(target, "m_ActorName") as string) ?? ("#" + targetGuid);
-            string label = ShortSkill(skillId) + " → " + targetName
-                           + "  " + damage.ToString("F0")
-                           + (crit ? "!" : string.Empty)
-                           + (hit ? string.Empty : " miss")
-                           + (effects > 0 ? "  fx" + effects : string.Empty)
+            string label = SkillName(skillId) + " → " + ActorName(target)
+                           + "   伤害" + damage.ToString("F0")
+                           + (crit ? " 暴击" : string.Empty)
+                           + (hit ? string.Empty : " 未命中")
+                           + EffectsText(actorResult)
                            + avoidedText;
 
             Color tint = targetIsAlly ? (after <= 0f ? new Color(1f, 0.4f, 0.4f) : new Color(0.8f, 0.9f, 1f))
@@ -241,6 +241,124 @@ namespace DSH.Foreseeker
         /// tokens are valued by their own positive/negative tag, DOTs are always bad for the
         /// holder, heals are good for the holder — then flipped for the opposing team.
         /// </summary>
+        private static string SkillName(string skillId)
+        {
+            string name = SaveReader.SkillName(skillId);
+            return string.IsNullOrEmpty(name) ? ShortSkill(skillId) : name;
+        }
+
+        private static string ActorName(object actor)
+        {
+            if (actor == null)
+            {
+                return "?";
+            }
+
+            uint guid = ToUInt(GetMember(actor, "m_ActorGuid"));
+            string custom = GetMember(actor, "m_ActorName") as string;
+
+            object classData = GetMember(actor, "m_ActorDataClass");
+            string classId = GetMember(classData, "Id") as string;
+            if (string.IsNullOrEmpty(classId))
+            {
+                classId = GetMember(classData, "m_Id") as string;
+            }
+
+            string className = string.IsNullOrEmpty(classId) ? null : SaveReader.ClassName(classId);
+
+            if (!string.IsNullOrEmpty(className) && !string.IsNullOrEmpty(custom) && custom != className)
+            {
+                return custom + "（" + className + "）";
+            }
+
+            if (!string.IsNullOrEmpty(className))
+            {
+                return className;
+            }
+
+            return string.IsNullOrEmpty(custom) ? "#" + guid : custom;
+        }
+
+        private static string EffectsText(object actorResult)
+        {
+            if (actorResult == null)
+            {
+                return string.Empty;
+            }
+
+            object container = GetMember(actorResult, "m_AppliedEffectsOutputContainer");
+            var outputs = GetMember(container, "Outputs") as IEnumerable;
+            if (outputs == null)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>();
+
+            foreach (object output in outputs)
+            {
+                var instances = GetMember(output, "EffectInstancesToApply") as IEnumerable;
+                if (instances == null)
+                {
+                    continue;
+                }
+
+                foreach (object instance in instances)
+                {
+                    object definition = GetMember(instance, "EffectDefinition");
+                    if (definition == null)
+                    {
+                        continue;
+                    }
+
+                    string tokenId = GetMember(definition, "m_TokenAddId") as string;
+                    if (!string.IsNullOrEmpty(tokenId))
+                    {
+                        int amount = Math.Max(1, ToInt(GetMember(instance, "TokenAddAmount")));
+                        string tokenName = SaveReader.TokenName(tokenId);
+                        parts.Add(amount > 1
+                            ? (string.IsNullOrEmpty(tokenName) ? tokenId : tokenName) + "×" + amount
+                            : (string.IsNullOrEmpty(tokenName) ? tokenId : tokenName));
+                        continue;
+                    }
+
+                    string dotId = GetMember(definition, "m_DotAddId") as string;
+                    if (!string.IsNullOrEmpty(dotId))
+                    {
+                        int amount = Math.Max(1, ToInt(GetMember(instance, "DotAddAmount")));
+                        string dot = SaveReader.DescribeDotApplication(dotId, amount);
+                        parts.Add(string.IsNullOrEmpty(dot) ? dotId : dot);
+                        continue;
+                    }
+
+                    float heal = ToFloat(GetMember(instance, "HealthHealAmount"));
+                    if (heal > 0f)
+                    {
+                        parts.Add("治疗" + heal.ToString("0.#"));
+                    }
+                }
+            }
+
+            if (parts.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            string text = "  ";
+            int shown = Math.Min(parts.Count, 3);
+            for (int i = 0; i < shown; i++)
+            {
+                if (i > 0)
+                {
+                    text += "、";
+                }
+
+                text += parts[i];
+            }
+
+            return parts.Count > shown ? text + "…" : text;
+        }
+
         private static float EffectValue(object performer, object actorResult, out int count)
         {
             count = 0;
@@ -417,6 +535,8 @@ namespace DSH.Foreseeker
             return id.Length > 18 ? id.Substring(0, 18) : id;
         }
 
+        private static GUIStyle _style;
+
         internal static void Draw()
         {
             if (!Visible)
@@ -424,19 +544,30 @@ namespace DSH.Foreseeker
                 return;
             }
 
+            if (_style == null)
+            {
+                _style = new GUIStyle(GUI.skin.label);
+                _style.fontSize = 14;
+                _style.richText = false;
+                _style.wordWrap = false;
+            }
+
             int count = Mathf.Min(Rows.Count, 10);
-            var rect = new Rect(Screen.width - 470f, 80f, 460f, 46f + count * 20f);
+            var rect = new Rect(Screen.width - 560f, 80f, 550f, 54f + count * 22f);
             GUI.Box(rect, string.Empty);
 
-            GUI.Label(new Rect(rect.x + 8f, rect.y + 4f, rect.width - 16f, 20f), _header);
+            Color header = GUI.color;
+            GUI.color = new Color(0.95f, 0.95f, 0.85f);
+            GUI.Label(new Rect(rect.x + 10f, rect.y + 6f, rect.width - 20f, 22f), _header, _style);
+            GUI.color = header;
 
             for (int i = 0; i < count; i++)
             {
                 Row row = Rows[i];
                 Color old = GUI.color;
                 GUI.color = row.Tint;
-                GUI.Label(new Rect(rect.x + 8f, rect.y + 26f + i * 20f, rect.width - 16f, 20f),
-                          row.Label + "  [" + row.Score.ToString("F1") + "]");
+                GUI.Label(new Rect(rect.x + 10f, rect.y + 30f + i * 22f, rect.width - 20f, 22f),
+                          (i + 1) + ". " + row.Label + "  [" + row.Score.ToString("F1") + "]", _style);
                 GUI.color = old;
             }
         }
@@ -503,7 +634,7 @@ namespace DSH.Foreseeker
                 if (penalty > 0.01f)
                 {
                     row.Score -= penalty;
-                    row.Label += "  in" + penalty.ToString("F1");
+                    row.Label += "  还手" + penalty.ToString("F1");
                 }
             }
         }
