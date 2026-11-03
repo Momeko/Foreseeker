@@ -872,6 +872,14 @@ namespace DSH.Foreseeker
                             continue;
                         }
 
+                        // Conviction is a pure resource: its payoff shows up in the skill that
+                        // consumes it (already reflected in that skill's pre-rolled damage), so the
+                        // token itself is worth nothing here.
+                        if (tokenId.StartsWith("conviction", StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+
                         if (tokenId == "weak")
                         {
                             float predicted = PredictedDamageOf(holder);
