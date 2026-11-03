@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using Assets.Code.Combat;
+using Assets.Code.Game;
 using Assets.Code.Library;
 using Assets.Code.Skill;
 using Assets.Code.Token;
@@ -706,6 +707,17 @@ namespace DSH.Foreseeker
                         continue;
                     }
 
+                    float stressDamage = ToFloat(GetMember(instance, "StressDamage"));
+                    float stressHeal = ToFloat(GetMember(instance, "StressHeal"));
+                    if (stressDamage > 0f)
+                    {
+                        parts.Add("压力+" + stressDamage.ToString("0.#"));
+                    }
+                    else if (stressHeal > 0f)
+                    {
+                        parts.Add("减压" + stressHeal.ToString("0.#"));
+                    }
+
                     float heal = ToFloat(GetMember(instance, "HealthHealAmount"));
                     if (heal > 0f)
                     {
@@ -968,6 +980,20 @@ namespace DSH.Foreseeker
                         continue;
                     }
 
+                    float stressDamage = ToFloat(GetMember(instance, "StressDamage"));
+                    float stressHeal = ToFloat(GetMember(instance, "StressHeal"));
+                    if (stressDamage > 0f)
+                    {
+                        total -= holderSign * StressCost(holder, stressDamage);
+                        continue;
+                    }
+
+                    if (stressHeal > 0f)
+                    {
+                        total -= holderSign * StressCost(holder, -stressHeal);
+                        continue;
+                    }
+
                     float heal = ToFloat(GetMember(instance, "HealthHealAmount"));
                     if (heal > 0f)
                     {
@@ -1083,6 +1109,122 @@ namespace DSH.Foreseeker
 
             float hp = ToFloat(GetMember(actor, "m_Hp"));
             return !float.IsNaN(hp) && hp <= 0f;
+        }
+
+        /// <summary>
+        /// Stress is scored per point (heavier past 8). Crossing the maximum triggers the actor's
+        /// own overstress roll — which uses the STRESS stream, so we replay that draw exactly.
+        /// </summary>
+        private static float StressCost(object actor, float delta)
+        {
+            if (actor == null || Mathf.Abs(delta) < 0.01f)
+            {
+                return 0f;
+            }
+
+            float max = Mathf.Max(1f, Stat(actor, _stressMaxStat, "m_Stress"));
+            float current = ToFloat(GetMember(actor, "m_Stress"));
+            if (float.IsNaN(current))
+            {
+                current = 0f;
+            }
+
+            current = Mathf.Clamp(current, 0f, max);
+
+            float cost = delta * (current >= 8f ? 1.5f : 1f);
+
+            if (delta > 0f && current + delta >= max - 0.001f)
+            {
+                object outcome = PredictOverstress(actor);
+                cost += outcome == null ? 3f : OverstressCost(actor, outcome);
+            }
+
+            return cost;
+        }
+
+        /// <summary>Replays the WeightedBag draw on the STRESS stream (same walk as the game).</summary>
+        private static object PredictOverstress(object actor)
+        {
+            try
+            {
+                object classData = GetMember(actor, "m_ActorDataClass");
+                var list = GetMember(classData, "m_Overstresses") as IEnumerable;
+                if (list == null)
+                {
+                    return null;
+                }
+
+                var definitions = new List<object>();
+                float total = 0f;
+                foreach (object definition in list)
+                {
+                    float chance = ToFloat(GetMember(definition, "m_Chance"));
+                    if (float.IsNaN(chance) || chance <= 0f)
+                    {
+                        continue;
+                    }
+
+                    definitions.Add(definition);
+                    total += chance;
+                }
+
+                if (definitions.Count == 0 || total <= 0f)
+                {
+                    return null;
+                }
+
+                float roll = ForeseekerPlugin.PeekStreamValue(RandomIdentifier.STRESS);
+                if (float.IsNaN(roll) || roll < 0f || roll >= 1f)
+                {
+                    return null;
+                }
+
+                float remaining = roll * total;
+                for (int i = 0; i < definitions.Count; i++)
+                {
+                    remaining -= ToFloat(GetMember(definitions[i], "m_Chance"));
+                    if (remaining < 0f)
+                    {
+                        return definitions[i];
+                    }
+                }
+
+                return definitions[definitions.Count - 1];
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>Cost of one overstress outcome: HP forced down (meltdown/toxic) or healed (resolute).</summary>
+        private static float OverstressCost(object actor, object outcome)
+        {
+            string id = GetMember(outcome, "m_Id") as string;
+            float max = Mathf.Max(1f, Stat(actor, _healthMaxStat, "m_Hp"));
+            float hp = ToFloat(GetMember(actor, "m_Hp"));
+            if (float.IsNaN(hp))
+            {
+                hp = max;
+            }
+
+            if (id == "meltdown")
+            {
+                return HpLossCost(actor, Mathf.Max(0f, hp - max * 0.1f)) + 2f; // -15% deathblow resist
+            }
+
+            if (id == "resolute")
+            {
+                float heal = Mathf.Max(0f, Mathf.Min(max - hp, max * 0.67f));
+                return -5f * (heal / max) - 1f; // +15% deathblow resist
+            }
+
+            if (id == "toxic")
+            {
+                return HpLossCost(actor, Mathf.Max(0f, hp - max * 0.3f)) + 1.5f; // -10% deathblow resist
+            }
+
+            return 3f;
         }
 
         private static float BucketOf(object actor, object statType)

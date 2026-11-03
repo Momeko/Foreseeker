@@ -846,6 +846,18 @@ namespace DSH.Foreseeker
             }
         }
 
+        internal static float PeekStreamValue(RandomIdentifier identifier)
+        {
+            if (!BeginSimulation(identifier))
+            {
+                return float.NaN;
+            }
+
+            float value = UnityEngine.Random.value;
+            EndSimulation();
+            return value;
+        }
+
         private static void EndSimulation()
         {
             if (!_simValid)
