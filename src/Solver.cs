@@ -83,6 +83,14 @@ namespace DSH.Foreseeker
                 return;
             }
 
+            // Only the player's team gets suggestions; the enemies are not ours to drive.
+            if (TeamIndexOf(actor) != 0)
+            {
+                Rows.Clear();
+                _header = "敌方行动中 · 等待我方回合";
+                return;
+            }
+
             object controller = GetMember(actor, "Controller") ?? GetMember(actor, "m_ActorController");
             var entries = Invoke(controller, "GetValidSkillTargetEntries", null) as IEnumerable;
             if (entries == null)
@@ -266,6 +274,18 @@ namespace DSH.Foreseeker
             }
 
             string className = string.IsNullOrEmpty(classId) ? null : SaveReader.ClassName(classId);
+
+            int teamIndex = TeamIndexOf(actor);
+            int position = ToInt(GetMember(actor, "m_TeamPosition")) + 1;
+
+            if (teamIndex != 0)
+            {
+                // Enemies share class names, so tag them with their 1-based rank.
+                string enemyName = string.IsNullOrEmpty(className)
+                    ? (string.IsNullOrEmpty(custom) ? "#" + guid : custom)
+                    : className;
+                return enemyName + "（" + position + "）";
+            }
 
             if (!string.IsNullOrEmpty(className) && !string.IsNullOrEmpty(custom) && custom != className)
             {
@@ -476,6 +496,12 @@ namespace DSH.Foreseeker
 
             TokenPolarityCache[tokenId] = value;
             return value;
+        }
+
+        private static int TeamIndexOf(object actor)
+        {
+            object team = GetMember(actor, "m_Team");
+            return ToInt(GetMember(team, "m_TeamIndex"));
         }
 
         private static bool IsAlly(object a, object b)

@@ -333,6 +333,15 @@ namespace DSH.Foreseeker
                 return;
             }
 
+            // The player only drives team 0; nothing to test on an enemy turn.
+            object checkTeams = GetMember(battle, "m_BattleTeams");
+            uint checkGuid = ToUInt(GetMember(battle, "CurrentActorGuid"));
+            if (CurrentTeamIndex(checkTeams, checkGuid) != 0)
+            {
+                Log("APPTEST skip: enemy turn");
+                return;
+            }
+
             string skillId;
             uint targetGuid;
             float damage;
