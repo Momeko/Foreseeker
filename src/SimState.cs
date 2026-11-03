@@ -4,8 +4,10 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 using Assets.Code.Combat;
+using Assets.Code.Library;
 using Assets.Code.Math;
 using Assets.Code.Skill;
+using Assets.Code.Token;
 using Assets.Code.Utils;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -404,9 +406,86 @@ namespace DSH.Foreseeker
             hpField.SetValue(actor, Math.Max(0f, current - damage));
         }
 
+        private static object _tokenLibrary;
+        private static object _skillSourceType;
+        private static bool _applyRefsResolved;
+
+        private static void ResolveApplyRefs()
+        {
+            if (_applyRefsResolved)
+            {
+                return;
+            }
+
+            _applyRefsResolved = true;
+            try
+            {
+                _tokenLibrary = SingletonMonoBehaviour<Library<string, TokenDefinition>>.Instance;
+                Type sourceType = typeof(SkillCalculation).Assembly.GetType("Assets.Code.Source.SourceType");
+                if (sourceType != null)
+                {
+                    FieldInfo field = sourceType.GetField("SKILL", BindingFlags.Public | BindingFlags.Static);
+                    if (field != null)
+                    {
+                        _skillSourceType = field.GetValue(null);
+                    }
+                }
+            }
+            catch
+            {
+                _tokenLibrary = null;
+                _skillSourceType = null;
+            }
+        }
+
+        /// <summary>Adds one token instance to the holder's live container (undone by Restore).</summary>
+        private static void ApplyToken(object holder, uint performerGuid, string tokenId, int amount)
+        {
+            ResolveApplyRefs();
+            if (_tokenLibrary == null || _skillSourceType == null)
+            {
+                return;
+            }
+
+            object container = GetMember(holder, "m_TokenContainer");
+            if (container == null)
+            {
+                return;
+            }
+
+            object definition = Invoke(_tokenLibrary, "GetLibraryElement", tokenId);
+            if (definition == null)
+            {
+                return;
+            }
+
+            foreach (MethodInfo method in container.GetType().GetMethods(Any))
+            {
+                if (method.Name != "Add" || method.GetParameters().Length != 10)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    method.Invoke(container, new object[]
+                    {
+                        definition, false, false, _skillSourceType, "solver", performerGuid,
+                        amount, false, false, false
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Log("token add failed " + tokenId + ": " + ex.GetType().Name);
+                }
+
+                return;
+            }
+        }
+
         /// <summary>
-        /// Applies the non-damage part of a pre-rolled result: heals, stress, movement.
-        /// Tokens and DOTs are only counted for now (they need container APIs).
+        /// Applies the non-damage part of a pre-rolled result: heals, stress, movement and tokens.
+        /// DOTs are still only counted.
         /// </summary>
         internal static void ApplyActorResult(object actorResult, out int tokens, out int dots,
                                               out float heal, out float stress, out int move)
@@ -421,6 +500,8 @@ namespace DSH.Foreseeker
             {
                 return;
             }
+
+            uint performerGuid = ToUInt(GetMember(actorResult, "m_PerformerActorGuid"));
 
             object container = GetMember(actorResult, "m_AppliedEffectsOutputContainer");
             var outputs = GetMember(container, "Outputs") as IEnumerable;
@@ -479,9 +560,12 @@ namespace DSH.Foreseeker
                         ApplyMoveDelta(holder, moveAmount);
                     }
 
-                    if (!string.IsNullOrEmpty(GetMember(definition, "m_TokenAddId") as string))
+                    string tokenId = GetMember(definition, "m_TokenAddId") as string;
+                    if (!string.IsNullOrEmpty(tokenId))
                     {
-                        tokens += Math.Max(1, ToInt(GetMember(instance, "TokenAddAmount")));
+                        int amount = Math.Max(1, ToInt(GetMember(instance, "TokenAddAmount")));
+                        tokens += amount;
+                        ApplyToken(holder, performerGuid, tokenId, amount);
                     }
 
                     if (!string.IsNullOrEmpty(GetMember(definition, "m_DotAddId") as string))
