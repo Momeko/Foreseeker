@@ -1040,7 +1040,27 @@ namespace DSH.Foreseeker
             }
 
             float max = Mathf.Max(1f, Stat(actor, _healthMaxStat, "m_Hp"));
-            return 5f * (damage / max) * HpRiskFactor(actor);
+            float hp = ToFloat(GetMember(actor, "m_Hp"));
+            if (float.IsNaN(hp))
+            {
+                hp = max;
+            }
+
+            float after = Mathf.Max(0f, hp - damage);
+
+            // Health is integer and damage is flat, so "how many more hits can this take" is
+            // absolute, not a percentage: 5 HP survives a 4 hit, 3 HP does not.
+            float hitsLeft = after / damage;
+            float bufferRisk = 1f + Mathf.Clamp01(1f - hitsLeft / 2f);
+
+            float cost = 5f * (damage / max) * HpRiskFactor(actor) * bufferRisk;
+
+            if (hp - damage <= 0f)
+            {
+                cost += 3f; // entering death's door
+            }
+
+            return cost;
         }
 
         private static float BucketOf(object actor, object statType)
