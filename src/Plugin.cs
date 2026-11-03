@@ -3141,6 +3141,12 @@ namespace DSH.Foreseeker
                     Solver.Visible = !Solver.Visible;
                     Logger.LogInfo("solver window -> visible=" + Solver.Visible);
                 }
+
+                // Snapshot / restore self-test.
+                if (IsPressed(input, KeyCode.F4))
+                {
+                    SimState.SelfTest();
+                }
             }
             catch (Exception ex)
             {

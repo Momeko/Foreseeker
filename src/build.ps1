@@ -15,7 +15,7 @@ $game = $gameDir.FullName
 $managed = Join-Path $game 'Darkest Dungeon II_Data\Managed'
 $core    = Join-Path $game 'BepInEx\core'
 $csc     = 'C:\Program Files\dotnet\sdk\10.0.301\Roslyn\bincore\csc.dll'
-$src     = @((Join-Path $PSScriptRoot 'Plugin.cs'), (Join-Path $PSScriptRoot 'SaveReader.cs'), (Join-Path $PSScriptRoot 'RandomTrace.cs'), (Join-Path $PSScriptRoot 'Probe.cs'), (Join-Path $PSScriptRoot 'SolverProbe.cs'), (Join-Path $PSScriptRoot 'ForeseekerHost.cs'), (Join-Path $PSScriptRoot 'Solver.cs'))
+$src     = @((Join-Path $PSScriptRoot 'Plugin.cs'), (Join-Path $PSScriptRoot 'SaveReader.cs'), (Join-Path $PSScriptRoot 'RandomTrace.cs'), (Join-Path $PSScriptRoot 'Probe.cs'), (Join-Path $PSScriptRoot 'SolverProbe.cs'), (Join-Path $PSScriptRoot 'ForeseekerHost.cs'), (Join-Path $PSScriptRoot 'Solver.cs'), (Join-Path $PSScriptRoot 'SimState.cs'))
 $outDir  = Join-Path $PSScriptRoot 'bin'
 
 if (-not (Test-Path -LiteralPath $managed)) { throw "managed folder not found: $managed" }
