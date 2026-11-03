@@ -242,7 +242,14 @@ namespace DSH.Foreseeker
             {
                 HarmonyLib.Harmony harmony = new HarmonyLib.Harmony(PluginGuid);
                 harmony.PatchAll();
-                RandomTrace.Sink = message => Logger.LogInfo(message);
+                RandomTrace.Sink = message =>
+                {
+                    Logger.LogInfo(message);
+                    if (message != null && message.StartsWith("S ", StringComparison.Ordinal))
+                    {
+                        ForetestLog.Write(message);
+                    }
+                };
                 RandomTrace.Enabled = _randomTraceEnabled;
                 Probe.Install(harmony);
                 Logger.LogInfo("RandomTrace hooks installed (enabled=" + _randomTraceEnabled + ")");
