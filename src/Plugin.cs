@@ -19,11 +19,11 @@ using Assets.Code.Events;
 using BepInEx;
 using UnityEngine;
 
-namespace DSH.Foresee
+namespace DSH.Foreseeker
 {
     /// <summary>
         /// BepInEx 5 plugin: an IMGUI window that predicts the current skill, plus a state window.
-        /// Both windows are draggable and toggled with hotkeys from Foresee.ini.
+        /// Both windows are draggable and toggled with hotkeys from Foreseeker.ini.
     ///
     /// Layout is 1.5x the base size (window 480x225, fonts 21/20).
     /// Placement: LEFT EDGE, VERTICALLY CENTERED on first use.
@@ -32,18 +32,18 @@ namespace DSH.Foresee
     /// DD2 runs with "Input System package" active, where UnityEngine.Input throws
     /// InvalidOperationException, so UnityEngine.Input must NOT be used here.
     ///
-    /// Settings live in "Foresee.ini" next to the plugin DLL (BepInEx\plugins\Foresee.ini):
+    /// Settings live in "Foreseeker.ini" next to the plugin DLL (BepInEx\plugins\Foreseeker.ini):
     ///   ToggleKey        show/hide toggle key        (default F2)
     ///   ToggleKeyAlt     alternative toggle key      (default F7, empty = disabled)
     ///   ResetPositionKey move back to left-center    (default F8)
     /// The file is re-read automatically about one second after it changes.
     /// </summary>
     [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
-    public class ForeseePlugin : BaseUnityPlugin
+    public class ForeseekerPlugin : BaseUnityPlugin
     {
-        public const string PluginGuid = "com.dsh.dd2.foresee";
-        public const string PluginName = "Foresee";
-        public const string PluginVersion = "0.29.2";
+        public const string PluginGuid = "com.momeko.dd2.foreseeker";
+        public const string PluginName = "Foreseeker";
+        public const string PluginVersion = "0.1.0";
 
         private const int WindowId = 987321;
         private const int StateWindowId = 987322;
@@ -63,12 +63,12 @@ namespace DSH.Foresee
         private const int TitleFontSize = 20;  // round(13 * 1.5)
         private const int LabelFontSize = 21;  // round(14 * 1.5)
 
-        private const string IniFileName = "Foresee.ini";
+        private const string IniFileName = "Foreseeker.ini";
 
         private const string DefaultIni =
             "; ============================================================\r\n" +
-            "; Foresee (BepInEx plugin) - 配置文件\r\n" +
-            "; 放在 BepInEx\\plugins\\ 下、与 Foresee.dll 同目录。\r\n" +
+            "; Foreseeker (BepInEx plugin) - 配置文件\r\n" +
+            "; 放在 BepInEx\\plugins\\ 下、与 Foreseeker.dll 同目录。\r\n" +
             "; 修改保存后约 1 秒自动生效（无需重启游戏）。\r\n" +
             ";\r\n" +
             "; 键名 = UnityEngine.KeyCode 的枚举名，例如：\r\n" +
@@ -78,7 +78,7 @@ namespace DSH.Foresee
             "; 值留空 = 禁用该键。\r\n" +
             "; ============================================================\r\n" +
             "\r\n" +
-            "[Foresee]\r\n" +
+            "[Foreseeker]\r\n" +
             "\r\n" +
             "; 显示 / 隐藏窗口的切换键（默认 F2）\r\n" +
             "ToggleKey = F2\r\n" +
@@ -89,7 +89,7 @@ namespace DSH.Foresee
             "ResetPositionKey = F8\r\n" +
             "\r\n" +
             "; 存档读数器：是否启用（默认 true）\r\n" +
-            "; 输出到插件 DLL 同目录的子文件夹（BepInEx\\plugins\\Foresee\\）\r\n" +
+            "; 输出到插件 DLL 同目录的子文件夹（BepInEx\\plugins\\Foreseeker\\）\r\n" +
             "SaveReaderEnabled = true\r\n" +
             "\r\n" +
             "; 存档读数器：检查间隔（秒，最小 1，默认 5）\r\n" +
@@ -254,7 +254,7 @@ namespace DSH.Foresee
             Logger.LogInfo("save reader: enabled=" + _saveReaderEnabled + " interval=" + _saveReaderInterval + "s"
                            + " root=" + _saveRoot + " out=" + _saveOutputDir);
 
-            ForeseeHost.Attach(this);
+            ForeseekerHost.Attach(this);
 
             try
             {
@@ -269,7 +269,7 @@ namespace DSH.Foresee
         private static void OnSceneLoadedForHost(UnityEngine.SceneManagement.Scene scene,
                                                  UnityEngine.SceneManagement.LoadSceneMode mode)
         {
-            ForeseeHost.Ensure();
+            ForeseekerHost.Ensure();
         }
 
         private float _nextHeartbeat;
@@ -323,7 +323,7 @@ namespace DSH.Foresee
 
         private void Update()
         {
-            if (ForeseeHost.Alive)
+            if (ForeseekerHost.Alive)
             {
                 return;
             }
@@ -1601,7 +1601,7 @@ namespace DSH.Foresee
                 {
                     _roundKey = roundKey;
                     _roundPeek = PeekValues(RandomIdentifier.ACTOR_CONTROLLER, 16);
-                    try { ForeseePlugin.RoundStateJson = RandomContainer.GetStateString(RandomIdentifier.ACTOR_CONTROLLER); } catch { ForeseePlugin.RoundStateJson = null; }
+                    try { ForeseekerPlugin.RoundStateJson = RandomContainer.GetStateString(RandomIdentifier.ACTOR_CONTROLLER); } catch { ForeseekerPlugin.RoundStateJson = null; }
                     _selPeek = _roundPeek;
                     Logger.LogInfo("ROUNDPEEK: round=" + roundKey
                                    + " vals=[" + (_roundPeek == null ? "-" : string.Join(",", _roundPeek.ConvertAll(v => v.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)).ToArray())) + "]");
@@ -2705,7 +2705,7 @@ namespace DSH.Foresee
             }
         }
         /// <summary>
-        /// Player-side prediction, ported from ForeseeRng: enumerate m_PotentialResults for the
+        /// Player-side prediction, ported from __Foreseeker_RNG__: enumerate m_PotentialResults for the
         /// current actor + selected skill, print damage/crit and each effect with its resist roll.
         /// </summary>
         private void UpdatePlayerPrediction()
@@ -3333,7 +3333,7 @@ namespace DSH.Foresee
 
         private void OnGUI()
         {
-            if (ForeseeHost.Alive)
+            if (ForeseekerHost.Alive)
             {
                 return;
             }
@@ -3438,7 +3438,7 @@ namespace DSH.Foresee
             }
         }
 
-        /// <summary>Title shows the hide key(s) exactly as configured in Foresee.ini, e.g. "Foresee [F2/F7 隐藏]".</summary>
+        /// <summary>Title shows the hide key(s) exactly as configured in Foreseeker.ini, e.g. "Foreseeker [F2/F7 隐藏]".</summary>
         private string WindowTitle()
         {
             var keys = new List<string>();
@@ -3457,7 +3457,7 @@ namespace DSH.Foresee
                 ? PluginName
                 : PluginName + " [" + string.Join("/", keys) + " 隐藏]";
         }
-        /// <summary>ForeseeRng-style target prefix: "1号位 (HP 11)  标记[虚弱] Dot[腐蚀(2*3)]".</summary>
+        /// <summary>__Foreseeker_RNG__-style target prefix: "1号位 (HP 11)  标记[虚弱] Dot[腐蚀(2*3)]".</summary>
         private string TargetSummary(SkillPreviewRow row)
         {
             SaveReader.Snapshot s = _lastSnapshot;
@@ -3614,7 +3614,7 @@ namespace DSH.Foresee
             return _stateText;
         }
 
-        /// <summary>State-window title shows the hide key from Foresee.ini, e.g. "DD2 状态读取 [F9 隐藏]".</summary>
+        /// <summary>State-window title shows the hide key from Foreseeker.ini, e.g. "DD2 状态读取 [F9 隐藏]".</summary>
         private static readonly float[] StateColumnWidths = { 80f, 130f, 78f, 78f, 168f };
 
         private void DrawPredictWindow(int windowId)

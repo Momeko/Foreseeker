@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 
-namespace DSH.Foresee
+namespace DSH.Foreseeker
 {
     /// <summary>
     /// Read-only probe for the "skill calculation RNG budget" question:
@@ -168,7 +168,7 @@ namespace DSH.Foresee
 
         private static void OnStateChanged(object[] __args)
         {
-            ForeseeHost.Ensure();
+            ForeseekerHost.Ensure();
 
             string to = Str(__args, 1);
             Emit("STATE " + Str(__args, 0) + "->" + to

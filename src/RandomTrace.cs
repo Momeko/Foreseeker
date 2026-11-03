@@ -5,7 +5,7 @@ using Assets.Code.Math;
 using HarmonyLib;
 using UnityEngine;
 
-namespace DSH.Foresee
+namespace DSH.Foreseeker
 {
     /// <summary>
     /// Harmony hooks on RandomContainer: records every draw with its stream id, call site and value.

@@ -7,7 +7,7 @@ using Assets.Code.Skill;
 using Assets.Code.Utils;
 using UnityEngine;
 
-namespace DSH.Foresee
+namespace DSH.Foreseeker
 {
     /// <summary>
     /// A-stage helper: ranks the current actor's legal (skill, target) choices by a resource

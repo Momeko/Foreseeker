@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
-namespace DSH.Foresee
+namespace DSH.Foreseeker
 {
     /// <summary>
     /// Reads the newest Darkest Dungeon II save (run → stage → combat) and renders it as

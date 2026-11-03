@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace DSH.Foresee
+namespace DSH.Foreseeker
 {
     /// <summary>
     /// Self-owned driver object. BepInEx hosts plugin components on "BepInEx_Manager", which
@@ -9,16 +9,16 @@ namespace DSH.Foresee
     /// The plugin therefore keeps its state in the managed object and lets this host, created
     /// by us and marked DontDestroyOnLoad, deliver Update/OnGUI.
     /// </summary>
-    internal static class ForeseeHost
+    internal static class ForeseekerHost
     {
-        internal static ForeseePlugin Plugin;
+        internal static ForeseekerPlugin Plugin;
 
         internal static bool Alive
         {
             get { return !ReferenceEquals(Runner.Instance, null); }
         }
 
-        internal static void Attach(ForeseePlugin plugin)
+        internal static void Attach(ForeseekerPlugin plugin)
         {
             if (!ReferenceEquals(plugin, null))
             {
@@ -38,7 +38,7 @@ namespace DSH.Foresee
 
             try
             {
-                var host = new GameObject("ForeseeHost");
+                var host = new GameObject("ForeseekerHost");
                 UnityEngine.Object.DontDestroyOnLoad(host);
                 host.AddComponent<Runner>();
                 Log("LIFECYCLE host created alive=" + Alive);

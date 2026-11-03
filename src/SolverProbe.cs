@@ -10,7 +10,7 @@ using Assets.Code.Utils;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 
-namespace DSH.Foresee
+namespace DSH.Foreseeker
 {
     /// <summary>
     /// P2 experiment: replay one actor's whole precompute into a throw-away SkillCalculation
