@@ -66,6 +66,7 @@ namespace DSH.Foreseeker
             ResolveInputFields();
 
             Hook(harmony, typeof(Assets.Code.Combat.Events.EventBattleStateChanged), "Trigger", "OnStateChanged", null);
+            Hook(harmony, typeof(Assets.Code.Campaign.Events.EventCampaignStarted), "Trigger", "OnCampaignStarted", null);
             Hook(harmony, typeof(Assets.Code.Combat.Events.EventBattleStartRound), "Trigger", "OnStartRound", null);
             Hook(harmony, typeof(Assets.Code.Combat.Events.EventBattleIncrementTurn), "Trigger", "OnIncrementTurn", null);
             Hook(harmony, typeof(Assets.Code.Actor.Events.EventSkillSelectionChanged), "Trigger", "OnSelection", "OnSelectionPre");
@@ -227,6 +228,18 @@ namespace DSH.Foreseeker
                  + " draws=" + (RandomTrace.TotalSeq - _selSeq)
                  + " skdraws=" + (RandomTrace.SkillCalcDraws - _selSkillCalc)
                  + " seq=" + RandomTrace.TotalSeq);
+        }
+
+        private static void OnCampaignStarted(object[] __args)
+        {
+            try
+            {
+                ForetestLog.StartNew("campaign");
+                Emit("CAMPAIGN started: new foretest log");
+            }
+            catch
+            {
+            }
         }
 
         private static void OnFinalize(object[] __args)

@@ -242,6 +242,7 @@ namespace DSH.Foreseeker
             {
                 HarmonyLib.Harmony harmony = new HarmonyLib.Harmony(PluginGuid);
                 harmony.PatchAll();
+                ForetestLog.StartNew("session");
                 RandomTrace.Sink = message =>
                 {
                     Logger.LogInfo(message);
