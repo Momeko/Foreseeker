@@ -334,6 +334,9 @@ namespace DSH.Foreseeker
             int move;
             ApplyActorResult(actorResult, out tokens, out dots, out heal, out stress, out move);
 
+            uint currentGuid = ToUInt(GetMember(battle, "CurrentActorGuid"));
+            string peek = PeekNextEnemy(battle, currentGuid);
+
             float hpAfter = hpField == null ? float.NaN : Convert.ToSingle(hpField.GetValue(target));
             int afterApply = Mismatches().Count;
 
@@ -349,6 +352,7 @@ namespace DSH.Foreseeker
                 + " move=" + move
                 + " tok=" + tokens
                 + " dot=" + dots
+                + " " + peek
                 + " cleanBefore=" + (cleanBefore == 0)
                 + " applied=" + (afterApply > 0)
                 + " restored=" + (afterRestore == 0)
@@ -619,6 +623,167 @@ namespace DSH.Foreseeker
 
             string name = GetMember(actor, "m_ActorName") as string;
             return string.IsNullOrEmpty(name) ? ("#" + ToUInt(GetMember(actor, "m_ActorGuid"))) : name;
+        }
+
+        // ---------------------------------------------------------------- enemy peek
+
+        /// <summary>
+        /// Runs the game's own precompute for one living enemy on the CURRENT (already applied)
+        /// state, then reports what that enemy could do. The caller restores everything after.
+        /// </summary>
+        private static string PeekNextEnemy(object battle, uint currentGuid)
+        {
+            try
+            {
+                object enemy = FindLivingEnemy(battle, currentGuid);
+                if (enemy == null)
+                {
+                    return "enemy=none";
+                }
+
+                uint enemyGuid = ToUInt(GetMember(enemy, "m_ActorGuid"));
+                object controller = GetMember(enemy, "Controller") ?? GetMember(enemy, "m_ActorController");
+                if (controller == null)
+                {
+                    return "enemy=" + enemyGuid + " ctrl=none";
+                }
+
+                List<string> skillIds = EquippedSkillIds(enemy);
+                if (skillIds.Count == 0)
+                {
+                    return "enemy=" + enemyGuid + " skills=0";
+                }
+
+                Invoke(controller, "CalculateValidSkillTargetEntries", skillIds, true);
+
+                IDictionary results = GetMember(GetMember(battle, "m_BattleSkillCalculation"),
+                                                "m_PotentialResults") as IDictionary;
+                if (results == null)
+                {
+                    return "enemy=" + enemyGuid + " results=none";
+                }
+
+                int count = 0;
+                string best = "none";
+                float bestDamage = -1f;
+
+                foreach (DictionaryEntry pair in results)
+                {
+                    object input = pair.Key;
+                    if (ToUInt(GetMember(input, "m_PerformerGuid")) != enemyGuid)
+                    {
+                        continue;
+                    }
+
+                    string skill = GetMember(input, "m_SelectedSkillId") as string;
+                    var actorResults = GetMember(pair.Value, "ActorResults") as IEnumerable;
+                    if (actorResults == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (object mapped in actorResults)
+                    {
+                        count++;
+                        float value = ToFloat(GetMember(mapped, "HealthDamage"));
+                        if (float.IsNaN(value) || value <= 0f)
+                        {
+                            continue;
+                        }
+
+                        if (value > bestDamage)
+                        {
+                            bestDamage = value;
+                            best = skill + "@" + ToUInt(GetMember(mapped, "m_TargetActorGuid"))
+                                   + "=" + value.ToString("F1");
+                        }
+                    }
+                }
+
+                string name = GetMember(enemy, "m_ActorName") as string;
+                return "enemy=" + (string.IsNullOrEmpty(name) ? "#" + enemyGuid : name)
+                       + " results=" + count + " best=" + best;
+            }
+            catch (Exception ex)
+            {
+                return "enemy=error:" + ex.GetType().Name;
+            }
+        }
+
+        private static object FindLivingEnemy(object battle, uint currentGuid)
+        {
+            object teams = GetMember(battle, "m_BattleTeams");
+            int currentTeam = CurrentTeamIndex(teams, currentGuid);
+
+            var teamList = GetMember(teams, "m_Teams") as IEnumerable;
+            if (teamList == null)
+            {
+                return null;
+            }
+
+            foreach (object team in teamList)
+            {
+                int teamIndex = ToInt(GetMember(team, "m_TeamIndex"));
+                if (teamIndex == currentTeam)
+                {
+                    continue;
+                }
+
+                var actors = GetMember(team, "m_Actors") as IEnumerable;
+                if (actors == null)
+                {
+                    continue;
+                }
+
+                foreach (object actor in actors)
+                {
+                    if (actor != null && ToInt(GetMember(actor, "m_IsLiving")) != 0)
+                    {
+                        return actor;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static int CurrentTeamIndex(object teams, uint guid)
+        {
+            object actor = Invoke(teams, "GetActorFromActorGuid", guid);
+            object team = GetMember(actor, "m_Team");
+            return ToInt(GetMember(team, "m_TeamIndex"));
+        }
+
+        private static List<string> EquippedSkillIds(object actor)
+        {
+            var ids = new List<string>();
+            var skills = GetMember(actor, "m_CombatSkills") as IEnumerable;
+            if (skills == null)
+            {
+                return ids;
+            }
+
+            foreach (object skill in skills)
+            {
+                if (skill == null)
+                {
+                    continue;
+                }
+
+                object equipped = GetMember(skill, "m_IsEquipped");
+                if (equipped != null && ToInt(equipped) == 0)
+                {
+                    continue;
+                }
+
+                string id = GetMember(skill, "m_SkillId") as string;
+                if (!string.IsNullOrEmpty(id))
+                {
+                    ids.Add(id);
+                }
+            }
+
+            return ids;
         }
 
         // ---------------------------------------------------------------- internals
