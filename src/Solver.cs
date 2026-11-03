@@ -314,11 +314,20 @@ namespace DSH.Foreseeker
             int effects;
             score += EffectValue(performer, actorResult, out effects);
 
+            // Position matters: a move skill walks to the ally it targets, and some skills carry
+            // their own movement effect. Value the rank change by how many skills work there.
+            float positionDelta = PositionDelta(performer, target, actorResult, targetGuid);
+            score += positionDelta * 0.7f;
+            string positionText = Mathf.Abs(positionDelta) > 0.01f
+                ? "  位置" + (positionDelta > 0f ? "+" : string.Empty) + positionDelta.ToString("F1")
+                : string.Empty;
+
             string label = SkillName(skillId) + " → " + ActorName(target)
                            + (damage > 0f ? "   伤害" + damage.ToString("F0") : string.Empty)
                            + (crit ? " 暴击" : string.Empty)
                            + (hit ? string.Empty : " 未命中")
                            + EffectsText(actorResult)
+                           + positionText
                            + avoidedText;
 
             Color tint = targetIsAlly ? (after <= 0f ? new Color(1f, 0.4f, 0.4f) : new Color(0.8f, 0.9f, 1f))
@@ -1241,6 +1250,139 @@ namespace DSH.Foreseeker
             }
 
             return 3f;
+        }
+
+        /// <summary>
+        /// How much better or worse the mover's rank becomes: ally-targeted skills walk to that
+        /// ally's rank, and some skills carry their own Move effect on the performer.
+        /// </summary>
+        private static float PositionDelta(object performer, object target, object actorResult, uint targetGuid)
+        {
+            try
+            {
+                uint performerGuid = ToUInt(GetMember(performer, "m_ActorGuid"));
+                int current = ToInt(GetMember(performer, "m_TeamPosition"));
+                if (current < 0)
+                {
+                    return 0f;
+                }
+
+                int destination = current;
+
+                bool targetIsAlly = target != null && IsAlly(performer, target) && targetGuid != performerGuid;
+                if (targetIsAlly)
+                {
+                    destination = ToInt(GetMember(target, "m_TeamPosition"));
+                }
+                else
+                {
+                    int move = MoveEffectsOn(actorResult, performerGuid);
+                    if (move != 0)
+                    {
+                        destination = current + move;
+                    }
+                }
+
+                destination = Mathf.Clamp(destination, 0, 3);
+                if (destination == current)
+                {
+                    return 0f;
+                }
+
+                return UtilityAt(performer, destination) - UtilityAt(performer, current);
+            }
+            catch
+            {
+                return 0f;
+            }
+        }
+
+        private static int MoveEffectsOn(object actorResult, uint actorGuid)
+        {
+            object container = GetMember(actorResult, "m_AppliedEffectsOutputContainer");
+            var outputs = GetMember(container, "Outputs") as IEnumerable;
+            if (outputs == null)
+            {
+                return 0;
+            }
+
+            int move = 0;
+            foreach (object output in outputs)
+            {
+                object holder = GetMember(output, "m_TargetActor");
+                if (holder == null || ToUInt(GetMember(holder, "m_ActorGuid")) != actorGuid)
+                {
+                    continue;
+                }
+
+                var instances = GetMember(output, "EffectInstancesToApply") as IEnumerable;
+                if (instances == null)
+                {
+                    continue;
+                }
+
+                foreach (object instance in instances)
+                {
+                    move += ToInt(GetMember(instance, "Move"));
+                }
+            }
+
+            return move;
+        }
+
+        private static readonly Dictionary<string, float> UtilityCache = new Dictionary<string, float>();
+
+        /// <summary>How many of the actor's equipped skills can be launched from this rank.</summary>
+        private static float UtilityAt(object actor, int rank)
+        {
+            uint guid = ToUInt(GetMember(actor, "m_ActorGuid"));
+            string key = guid + ":" + rank;
+            float cached;
+            if (UtilityCache.TryGetValue(key, out cached))
+            {
+                return cached;
+            }
+
+            float total = 0f;
+            try
+            {
+                object library = SingletonMonoBehaviour<Library<string, ActorDataSkill>>.Instance;
+                var skills = GetMember(actor, "m_CombatSkills") as IEnumerable;
+                if (skills != null)
+                {
+                    foreach (object skill in skills)
+                    {
+                        string id = GetMember(skill, "m_SkillId") as string;
+                        if (string.IsNullOrEmpty(id))
+                        {
+                            continue;
+                        }
+
+                        object definition = Invoke(library, "GetLibraryElement", id);
+                        var ranks = GetMember(definition, "m_LaunchRanks") as IEnumerable;
+                        if (ranks == null)
+                        {
+                            continue;
+                        }
+
+                        foreach (object value in ranks)
+                        {
+                            if (ToInt(value) == rank + 1)
+                            {
+                                total += 1f;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                total = 0f;
+            }
+
+            UtilityCache[key] = total;
+            return total;
         }
 
         private static float BucketOf(object actor, object statType)
