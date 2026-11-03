@@ -449,7 +449,9 @@ namespace DSH.Foreseeker
 
             int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
             bool dodge = false;
+            bool dodgePlus = false;
             bool block = false;
+            bool blockPlus = false;
             bool vulnerable = false;
 
             for (int i = 0; i < count; i++)
@@ -458,11 +460,19 @@ namespace DSH.Foreseeker
                 object definition = instance == null ? null : GetMember(instance, "Definition");
                 string id = definition == null ? null : GetMember(definition, "m_Id") as string;
 
-                if (id == "dodge" || id == "dodge_plus")
+                if (id == "dodge_plus")
+                {
+                    dodgePlus = true;
+                }
+                else if (id == "dodge")
                 {
                     dodge = true;
                 }
-                else if (id == "block" || id == "block_plus")
+                else if (id == "block_plus")
+                {
+                    blockPlus = true;
+                }
+                else if (id == "block")
                 {
                     block = true;
                 }
@@ -472,13 +482,23 @@ namespace DSH.Foreseeker
                 }
             }
 
-            if (dodge)
+            // Dodge is a chance to avoid the hit (50%, 75% for dodge+); block halves the damage
+            // (25% for block+). Stacks of the same kind do not compound against one attack.
+            float factor = 1f;
+            if (dodgePlus)
             {
-                return 0f;
+                factor *= 0.25f;
+            }
+            else if (dodge)
+            {
+                factor *= 0.5f;
             }
 
-            float factor = 1f;
-            if (block)
+            if (blockPlus)
+            {
+                factor *= 0.25f;
+            }
+            else if (block)
             {
                 factor *= 0.5f;
             }
@@ -735,11 +755,13 @@ namespace DSH.Foreseeker
             switch (tokenId)
             {
                 case "dodge":
+                    return 0.6f;
                 case "dodge_plus":
-                    return 0.7f;
+                    return 1.0f;
                 case "block":
+                    return 0.7f;
                 case "block_plus":
-                    return 0.8f;
+                    return 1.1f;
                 case "strength":
                 case "crit":
                     return 1.0f;
