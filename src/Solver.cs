@@ -73,6 +73,9 @@ namespace DSH.Foreseeker
         }
 
         private static string _itemLine = string.Empty;
+        private static uint _itemTargetGuid;
+        private static object _itemResult;
+        private static float _itemScore;
 
         private static MethodInfo _addPotentialMethod;
 
@@ -137,6 +140,9 @@ namespace DSH.Foreseeker
         private static void BuildItemAdvice(object actor)
         {
             _itemLine = string.Empty;
+            _itemTargetGuid = 0;
+            _itemResult = null;
+            _itemScore = 0f;
 
             try
             {
@@ -218,6 +224,7 @@ namespace DSH.Foreseeker
                             }
 
                             float score = 0f;
+                            object chosenResult = null;
                             foreach (DictionaryEntry pair in results)
                             {
                                 var actorResults = GetMember(pair.Value, "ActorResults") as IEnumerable;
@@ -232,6 +239,8 @@ namespace DSH.Foreseeker
                                     {
                                         continue;
                                     }
+
+                                    chosenResult = actorResult;
 
                                     float damage = ToFloat(GetMember(actorResult, "HealthDamage"));
                                     if (float.IsNaN(damage))
@@ -250,6 +259,9 @@ namespace DSH.Foreseeker
                             {
                                 bestScore = score;
                                 bestLine = SkillName(id) + " → " + ActorName(target);
+                                _itemTargetGuid = targetGuid;
+                                _itemResult = chosenResult;
+                                _itemScore = score;
                             }
                         }
                     }
@@ -2110,6 +2122,27 @@ namespace DSH.Foreseeker
                             float st;
                             int mv;
                             SimState.ApplyActorResult(part.ActorResult, out tk, out dt, out hl, out st, out mv);
+                        }
+
+                        // The free item is used on this turn too, so the enemy reacts to it.
+                        if (_itemResult != null && _itemTargetGuid != 0)
+                        {
+                            object itemTarget = Invoke(_teams, "GetActorFromActorGuid", _itemTargetGuid);
+                            if (itemTarget != null)
+                            {
+                                float itemDamage = ToFloat(GetMember(_itemResult, "HealthDamage"));
+                                if (!float.IsNaN(itemDamage) && itemDamage > 0f)
+                                {
+                                    SimState.ApplyDamage(itemTarget, itemDamage);
+                                }
+
+                                int itk;
+                                int idt;
+                                float ihl;
+                                float ist;
+                                int imv;
+                                SimState.ApplyActorResult(_itemResult, out itk, out idt, out ihl, out ist, out imv);
+                            }
                         }
 
                         float incoming = SimState.PeekIncoming();
