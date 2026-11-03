@@ -99,7 +99,7 @@ namespace DSH.Foreseeker
             "StateWindowKey = F9\r\n" +
             "\r\n" +
             "; 右侧「DD2 状态读取」窗口启动时是否显示（true=显示，false=默认关闭，F9 仍可临时开关）\r\n" +
-            "StateWindowVisible = true\r\n" +
+            "StateWindowVisible = false\r\n" + "SolverVisible = false\r\n" +
             "\r\n" +
             "; 敌方行动预判（实验性：用 ACTOR_CONTROLLER 随机流 + 游戏自身的合法技能/目标表预测）\r\n" +
             "EnemyIntentEnabled = true\r\n" +
@@ -110,7 +110,7 @@ namespace DSH.Foreseeker
             "; Harmony 随机流追踪（记录每次 GetValue/Range/CheckValue 的流与调用点）\r\n" +
             "RandomTraceEnabled = true\r\n";
 
-        private bool _visible = true;
+        private bool _visible = false;
         private Rect _windowRect = new Rect(0f, 0f, WindowWidth, WindowHeight);
 
         private GUIStyle _windowStyle;
@@ -155,7 +155,7 @@ namespace DSH.Foreseeker
 
         // --- state window (right side, vertically centered) -------------------
         private bool _stateVisible = true;
-        private bool _stateVisibleDefault = true;
+        private bool _stateVisibleDefault = false;
         private bool _enemyIntentEnabled = true;
         private bool _randomTraceEnabled = true;
         private string _enemyIntent = string.Empty;
@@ -3291,7 +3291,11 @@ namespace DSH.Foreseeker
 
                     else if (key.Equals("StateWindowVisible", StringComparison.OrdinalIgnoreCase))
                     {
-                        _stateVisibleDefault = ParseBool(value, true);
+                        _stateVisibleDefault = ParseBool(value, false);
+                    }
+                    else if (key.Equals("SolverVisible", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Solver.Visible = ParseBool(value, false);
                     }
 
                 }
