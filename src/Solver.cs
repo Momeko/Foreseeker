@@ -172,12 +172,55 @@ namespace DSH.Foreseeker
                          + " pos=" + position
                          + " hp=" + hp.ToString("F0") + "/" + max.ToString("F0"));
                 }
+
+                var bosses = new List<string>();
+                foreach (object enemy in TeamActors(1))
+                {
+                    if (IsBoss(enemy))
+                    {
+                        bosses.Add(ActorName(enemy) + "(" + DataId(GetMember(enemy, "m_ActorDataClass")) + ")");
+                    }
+                }
+
+                if (bosses.Count > 0)
+                {
+                    sink("S BATTLE boss=1 bosses=" + string.Join("|", bosses.ToArray()));
+                }
+                else
+                {
+                    sink("S BATTLE boss=0");
+                }
             }
             catch
             {
             }
         }
 
+        private static readonly HashSet<string> BossTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "boss", "end_boss", "biome_boss", "gang_boss", "cultist_boss", "dog_boss", "kingdom_boss"
+        };
+
+        private static bool IsBoss(object actor)
+        {
+            object classData = GetMember(actor, "m_ActorDataClass");
+            var tags = classData == null ? null : GetMember(classData, "m_Tags") as IEnumerable;
+            if (tags == null)
+            {
+                return false;
+            }
+
+            foreach (object tag in tags)
+            {
+                string text = tag as string;
+                if (!string.IsNullOrEmpty(text) && BossTags.Contains(text.Trim()))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
         private static string DataId(object container)
         {
             if (container == null)
