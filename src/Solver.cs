@@ -780,7 +780,8 @@ namespace DSH.Foreseeker
                         continue;
                     }
 
-                    if (tokenId == "strength")
+                    // Conviction (Vestal's resource token) counts as a strength stack.
+                    if (tokenId == "strength" || tokenId.StartsWith("conviction", StringComparison.Ordinal))
                     {
                         grantedStrength += holderIsAlly ? 1 : -1;
                     }
@@ -858,7 +859,8 @@ namespace DSH.Foreseeker
 
                         // strength / crit / vulnerable are valued together in the multiplicative
                         // pass above; counting them again here would double-dip.
-                        if (tokenId == "strength" || tokenId == "crit" || tokenId == "vulnerable")
+                        if (tokenId == "strength" || tokenId == "crit" || tokenId == "vulnerable"
+                            || tokenId.StartsWith("conviction", StringComparison.Ordinal))
                         {
                             continue;
                         }
@@ -1013,6 +1015,9 @@ namespace DSH.Foreseeker
                     return 1.1f;
                 case "strength":
                 case "crit":
+                case "conviction":
+                case "conviction_p1":
+                case "conviction_p3":
                     return 1.0f;
                 case "speed":
                 case "speed_plus":
