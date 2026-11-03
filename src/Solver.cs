@@ -50,7 +50,7 @@ namespace DSH.Foreseeker
                 return;
             }
 
-            _nextRefresh = Time.realtimeSinceStartup + 0.5f;
+            _nextRefresh = Time.realtimeSinceStartup + (Visible ? 0.7f : 1.5f);
 
             try
             {
@@ -167,7 +167,8 @@ namespace DSH.Foreseeker
             }
 
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
-            ApplyLookahead();
+            ApplyLookahead(actor, ToInt(GetMember(battle, "CurrentRound")),
+                           ToInt(GetMember(battle, "CurrentTurn")), actorGuid);
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
 
             string name = ActorName(actor);
@@ -576,7 +577,16 @@ namespace DSH.Foreseeker
         /// For the best few candidates, really apply the action, ask the game what the opponent
         /// would do, then roll the battle back. The predicted incoming damage is subtracted.
         /// </summary>
-        private static void ApplyLookahead()
+        private static string _lookaheadKey = string.Empty;
+        private static float _lookaheadNext;
+        private static readonly Dictionary<string, float> _lookaheadPenalties = new Dictionary<string, float>();
+
+        /// <summary>
+        /// For the best few candidates, apply the action, ask the game what the opponent would do,
+        /// then roll back. The expensive part only runs when the turn or the selected skill changes;
+        /// the cached penalties are re-applied to every refreshed row.
+        /// </summary>
+        private static void ApplyLookahead(object actor, int round, int turn, uint actorGuid)
         {
             object battle = SimState.Battle;
             object state = battle == null ? null : GetMember(battle, "CurrentBattleState");
@@ -585,53 +595,82 @@ namespace DSH.Foreseeker
                 return;
             }
 
-            int limit = Mathf.Min(3, Rows.Count);
-            for (int i = 0; i < limit; i++)
-            {
-                Row row = Rows[i];
-                if (row.ActorResult == null)
-                {
-                    continue;
-                }
+            string selected = (actor == null ? null : GetMember(actor, "m_SelectedSkillId") as string) ?? string.Empty;
+            string key = round + ":" + turn + ":" + actorGuid + ":" + selected;
 
-                float penalty = 0f;
-                try
+            if (key != _lookaheadKey
+                && Time.realtimeSinceStartup >= _lookaheadNext
+                && Rows.Count > 0)
+            {
+                _lookaheadNext = Time.realtimeSinceStartup + 0.75f;
+                _lookaheadKey = key;
+                _lookaheadPenalties.Clear();
+
+                float start = Time.realtimeSinceStartup;
+                int limit = Mathf.Min(1, Rows.Count);
+
+                for (int i = 0; i < limit; i++)
                 {
-                    if (!SimState.Capture())
+                    Row row = Rows[i];
+                    if (row.ActorResult == null)
                     {
                         continue;
                     }
 
-                    object target = Invoke(_teams, "GetActorFromActorGuid", row.TargetGuid);
-                    SimState.ApplyDamage(target, row.Damage);
-
-                    int tokens;
-                    int dots;
-                    float heal;
-                    float stress;
-                    int move;
-                    SimState.ApplyActorResult(row.ActorResult, out tokens, out dots, out heal, out stress, out move);
-
-                    float incoming = SimState.PeekIncoming();
-                    uint victimGuid = SimState.PeekIncomingVictim();
-                    if (incoming > 0f && victimGuid != 0)
+                    try
                     {
-                        object victim = Invoke(_teams, "GetActorFromActorGuid", victimGuid);
-                        float maxHp = Mathf.Max(1f, Stat(victim, _healthMaxStat, "m_Hp"));
-                        penalty = 5f * (incoming / maxHp);
+                        if (!SimState.Capture())
+                        {
+                            continue;
+                        }
+
+                        object target = Invoke(_teams, "GetActorFromActorGuid", row.TargetGuid);
+                        SimState.ApplyDamage(target, row.Damage);
+
+                        int tokens;
+                        int dots;
+                        float heal;
+                        float stress;
+                        int move;
+                        SimState.ApplyActorResult(row.ActorResult, out tokens, out dots, out heal, out stress, out move);
+
+                        float incoming = SimState.PeekIncoming();
+                        uint victimGuid = SimState.PeekIncomingVictim();
+                        if (incoming > 0f && victimGuid != 0)
+                        {
+                            object victim = Invoke(_teams, "GetActorFromActorGuid", victimGuid);
+                            float maxHp = Mathf.Max(1f, Stat(victim, _healthMaxStat, "m_Hp"));
+                            _lookaheadPenalties[row.SkillId + "@" + row.TargetGuid] = 5f * (incoming / maxHp);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _header = "求解器前瞻出错：" + ex.GetType().Name;
+                    }
+                    finally
+                    {
+                        SimState.Restore();
+                        SimState.Clear();
                     }
                 }
-                catch (Exception ex)
-                {
-                    _header = "solver lookahead error: " + ex.GetType().Name;
-                }
-                finally
-                {
-                    SimState.Restore();
-                    SimState.Clear();
-                }
 
-                if (penalty > 0.01f)
+                float spent = (Time.realtimeSinceStartup - start) * 1000f;
+                if (spent > 120f)
+                {
+                    Action<string> sink = RandomTrace.Sink;
+                    if (sink != null)
+                    {
+                        sink("S solver lookahead took " + spent.ToString("F0") + "ms");
+                    }
+                }
+            }
+
+            for (int i = 0; i < Rows.Count; i++)
+            {
+                Row row = Rows[i];
+                float penalty;
+                if (_lookaheadPenalties.TryGetValue(row.SkillId + "@" + row.TargetGuid, out penalty)
+                    && penalty > 0.01f)
                 {
                     row.Score -= penalty;
                     row.Label += "  还手" + penalty.ToString("F1");
