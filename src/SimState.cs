@@ -817,6 +817,34 @@ namespace DSH.Foreseeker
 
         // ---------------------------------------------------------------- enemy peek
 
+        private static float _lastPredDamage;
+        private static uint _lastPredVictim;
+
+        /// <summary>
+        /// Runs the opponent peek on the current (already applied) state and returns the damage
+        /// the predicted action would deal. The caller owns capture/restore.
+        /// </summary>
+        internal static float PeekIncoming()
+        {
+            _lastPredDamage = 0f;
+            _lastPredVictim = 0;
+
+            object battle = Battle;
+            if (battle == null)
+            {
+                return 0f;
+            }
+
+            uint guid = ToUInt(GetMember(battle, "CurrentActorGuid"));
+            PeekNextEnemy(battle, guid);
+            return _lastPredDamage;
+        }
+
+        internal static uint PeekIncomingVictim()
+        {
+            return _lastPredVictim;
+        }
+
         /// <summary>
         /// Runs the game's own precompute for one living enemy on the CURRENT (already applied)
         /// state, then reports what that enemy could do. The caller restores everything after.
@@ -954,8 +982,15 @@ namespace DSH.Foreseeker
                             }
 
                             float value = ToFloat(GetMember(mapped, "HealthDamage"));
+                            if (float.IsNaN(value))
+                            {
+                                value = 0f;
+                            }
+
+                            _lastPredDamage = value;
+                            _lastPredVictim = action.Value;
                             pred = action.Key + "@" + action.Value + "="
-                                   + (float.IsNaN(value) ? 0f : value).ToString("F1");
+                                   + value.ToString("F1");
                         }
                     }
                 }

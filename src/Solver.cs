@@ -34,9 +34,13 @@ namespace DSH.Foreseeker
 
         private sealed class Row
         {
-            public string Text;
+            public string Label;
             public float Score;
             public Color Tint;
+            public string SkillId;
+            public uint TargetGuid;
+            public float Damage;
+            public object ActorResult;
         }
 
         internal static void Refresh()
@@ -163,6 +167,8 @@ namespace DSH.Foreseeker
             }
 
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
+            ApplyLookahead();
+            Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
 
             string name = (GetMember(actor, "m_ActorName") as string) ?? ("#" + actorGuid);
             _header = "solver: " + name + "  round=" + ToInt(GetMember(battle, "CurrentRound"))
@@ -213,13 +219,21 @@ namespace DSH.Foreseeker
                            + (crit ? "!" : string.Empty)
                            + (hit ? string.Empty : " miss")
                            + (effects > 0 ? "  fx" + effects : string.Empty)
-                           + avoidedText
-                           + "  [" + score.ToString("F1") + "]";
+                           + avoidedText;
 
             Color tint = targetIsAlly ? (after <= 0f ? new Color(1f, 0.4f, 0.4f) : new Color(0.8f, 0.9f, 1f))
                                       : new Color(1f, 0.95f, 0.8f);
 
-            return new Row { Text = label, Score = score, Tint = tint };
+            return new Row
+            {
+                Label = label,
+                Score = score,
+                Tint = tint,
+                SkillId = skillId,
+                TargetGuid = targetGuid,
+                Damage = damage,
+                ActorResult = actorResult
+            };
         }
 
         /// <summary>
@@ -421,8 +435,76 @@ namespace DSH.Foreseeker
                 Row row = Rows[i];
                 Color old = GUI.color;
                 GUI.color = row.Tint;
-                GUI.Label(new Rect(rect.x + 8f, rect.y + 26f + i * 20f, rect.width - 16f, 20f), row.Text);
+                GUI.Label(new Rect(rect.x + 8f, rect.y + 26f + i * 20f, rect.width - 16f, 20f),
+                          row.Label + "  [" + row.Score.ToString("F1") + "]");
                 GUI.color = old;
+            }
+        }
+
+        /// <summary>
+        /// For the best few candidates, really apply the action, ask the game what the opponent
+        /// would do, then roll the battle back. The predicted incoming damage is subtracted.
+        /// </summary>
+        private static void ApplyLookahead()
+        {
+            object battle = SimState.Battle;
+            object state = battle == null ? null : GetMember(battle, "CurrentBattleState");
+            if (state == null || state.ToString() != "in_turn_select")
+            {
+                return;
+            }
+
+            int limit = Mathf.Min(3, Rows.Count);
+            for (int i = 0; i < limit; i++)
+            {
+                Row row = Rows[i];
+                if (row.ActorResult == null)
+                {
+                    continue;
+                }
+
+                float penalty = 0f;
+                try
+                {
+                    if (!SimState.Capture())
+                    {
+                        continue;
+                    }
+
+                    object target = Invoke(_teams, "GetActorFromActorGuid", row.TargetGuid);
+                    SimState.ApplyDamage(target, row.Damage);
+
+                    int tokens;
+                    int dots;
+                    float heal;
+                    float stress;
+                    int move;
+                    SimState.ApplyActorResult(row.ActorResult, out tokens, out dots, out heal, out stress, out move);
+
+                    float incoming = SimState.PeekIncoming();
+                    uint victimGuid = SimState.PeekIncomingVictim();
+                    if (incoming > 0f && victimGuid != 0)
+                    {
+                        object victim = Invoke(_teams, "GetActorFromActorGuid", victimGuid);
+                        float maxHp = Mathf.Max(1f, Stat(victim, _healthMaxStat, "m_Hp"));
+                        penalty = 5f * (incoming / maxHp);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _header = "solver lookahead error: " + ex.GetType().Name;
+                }
+                finally
+                {
+                    SimState.Restore();
+                    SimState.Clear();
+                }
+
+                if (penalty > 0.01f)
+                {
+                    row.Score -= penalty;
+                    row.Label += "  in" + penalty.ToString("F1");
+                }
             }
         }
 
