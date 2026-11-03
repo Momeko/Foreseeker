@@ -272,7 +272,7 @@ namespace DSH.Foreseeker
 
             // Ally damage is a cost, enemy damage is a gain; a kill is worth much more.
             float sign = targetIsAlly ? -1f : 1f;
-            float score = sign * 5f * (damage / maxHp);
+            float score = sign * HpLossCost(target, damage);
             string avoidedText = string.Empty;
             if (after <= 0f && damage > 0f)
             {
@@ -289,7 +289,7 @@ namespace DSH.Foreseeker
                     {
                         object victim = Invoke(_teams, "GetActorFromActorGuid", victimGuid);
                         float victimMax = Mathf.Max(1f, Stat(victim, _healthMaxStat, "m_Hp"));
-                        score += 5f * (avoided / victimMax);
+                        score += HpLossCost(victim, avoided);
                         avoidedText = "  少挨" + avoided.ToString("F0");
                     }
                 }
@@ -964,7 +964,7 @@ namespace DSH.Foreseeker
                     {
                         float holderMaxHp = Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
                         float land = holderSign < 0f ? DodgeFactor(holder) : 1f;
-                        total -= holderSign * 5f * (effectDamage / holderMaxHp) * land;
+                        total -= holderSign * HpLossCost(holder, effectDamage) * land;
                         continue;
                     }
 
@@ -974,7 +974,7 @@ namespace DSH.Foreseeker
                         float maxHp = Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
                         float hp = ToFloat(GetMember(holder, "m_Hp"));
                         float effective = Mathf.Max(0f, Mathf.Min(heal, maxHp - hp));
-                        total += holderSign * 5f * (effective / maxHp);
+                        total += holderSign * 5f * (effective / maxHp) * HpRiskFactor(holder);
                     }
                 }
             }
@@ -990,6 +990,57 @@ namespace DSH.Foreseeker
             }
 
             return total;
+        }
+
+        /// <summary>
+        /// How expensive one point of damage is for this actor right now. Damage is flat while
+        /// health pools differ, so the same hit is cheaper on a 50 HP hero than on a 28 HP one;
+        /// but once the bar is nearly empty, absolute distance to death matters more.
+        /// Piecewise: 100% -> x0.5, 60% -> x0.8, 30% -> x1.6, 10% -> x2.6.
+        /// </summary>
+        private static float HpRiskFactor(object actor)
+        {
+            if (actor == null)
+            {
+                return 1f;
+            }
+
+            float max = Mathf.Max(1f, Stat(actor, _healthMaxStat, "m_Hp"));
+            float hp = ToFloat(GetMember(actor, "m_Hp"));
+            if (float.IsNaN(hp))
+            {
+                hp = max;
+            }
+
+            float r = Mathf.Clamp01(hp / max);
+
+            if (r >= 0.6f)
+            {
+                return Mathf.Lerp(0.8f, 0.5f, (r - 0.6f) / 0.4f);
+            }
+
+            if (r >= 0.3f)
+            {
+                return Mathf.Lerp(1.6f, 0.8f, (r - 0.3f) / 0.3f);
+            }
+
+            if (r >= 0.1f)
+            {
+                return Mathf.Lerp(2.6f, 1.6f, (r - 0.1f) / 0.2f);
+            }
+
+            return 2.6f + (0.1f - r) * 5f;
+        }
+
+        private static float HpLossCost(object actor, float damage)
+        {
+            if (actor == null || damage <= 0f)
+            {
+                return 0f;
+            }
+
+            float max = Mathf.Max(1f, Stat(actor, _healthMaxStat, "m_Hp"));
+            return 5f * (damage / max) * HpRiskFactor(actor);
         }
 
         private static float BucketOf(object actor, object statType)
@@ -1095,8 +1146,8 @@ namespace DSH.Foreseeker
             float fromMax = Mathf.Max(1f, Stat(fromActor, _healthMaxStat, "m_Hp"));
             float tankMax = Mathf.Max(1f, Stat(tankActor, _healthMaxStat, "m_Hp"));
 
-            float avoided = Mitigate(fromActor, damage) * 5f / fromMax;
-            float incurred = Mitigate(tankActor, damage) * 5f / tankMax;
+            float avoided = 5f * (Mitigate(fromActor, damage) / fromMax) * HpRiskFactor(fromActor);
+            float incurred = 5f * (Mitigate(tankActor, damage) / tankMax) * HpRiskFactor(tankActor);
             return avoided - incurred;
         }
 
@@ -1390,7 +1441,7 @@ namespace DSH.Foreseeker
                             object victim = Invoke(_teams, "GetActorFromActorGuid", victimGuid);
                             incoming = Mitigate(victim, incoming);
                             float maxHp = Mathf.Max(1f, Stat(victim, _healthMaxStat, "m_Hp"));
-                            _lookaheadPenalties[row.SkillId + "@" + row.TargetGuid] = 5f * (incoming / maxHp);
+                            _lookaheadPenalties[row.SkillId + "@" + row.TargetGuid] = HpLossCost(victim, incoming);
                         }
                     }
                     catch (Exception ex)
