@@ -138,6 +138,7 @@ namespace DSH.Foreseeker
         /// ranked skills rather than a row competing with them.
         /// </summary>
         private static int _partyLoggedBattle;
+        private static bool _bossBattle;
 
         /// <summary>Logs the party's classes and paths once per battle, so a run can be labelled.</summary>
         private static void LogParty(object battle)
@@ -182,6 +183,7 @@ namespace DSH.Foreseeker
                     }
                 }
 
+                _bossBattle = bosses.Count > 0;
                 if (bosses.Count > 0)
                 {
                     sink("S BATTLE boss=1 bosses=" + string.Join("|", bosses.ToArray()));
@@ -587,6 +589,7 @@ namespace DSH.Foreseeker
                      + " turn=" + ToInt(GetMember(battle, "CurrentTurn"))
                      + " actor=" + ActorName(actor)
                      + " choices=" + plans
+                     + (_bossBattle ? " boss=1" : string.Empty)
                      + (string.IsNullOrEmpty(_itemLine) ? string.Empty : " item=" + _itemLine));
 
                 for (int i = 0; i < Rows.Count && i < 3; i++)
