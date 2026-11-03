@@ -246,7 +246,7 @@ namespace DSH.Foreseeker
             _header = "求解器 · " + name
                       + " · 第" + ToInt(GetMember(battle, "CurrentRound")) + "回合"
                       + " 第" + (ToInt(GetMember(battle, "CurrentTurn")) + 1) + "手"
-                      + " · " + plans + " 个选择 · 评分越高越好";
+                      + " · " + plans + " 个选择 · 评分越高越好 · 按 F5 关闭";
         }
 
         private static Row Score(object performer, object target, string skillId, uint targetGuid,
