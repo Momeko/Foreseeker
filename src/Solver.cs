@@ -461,6 +461,80 @@ namespace DSH.Foreseeker
                       + " · " + plans + " 个选择 · 评分越高越好 · 按 F5 关闭";
 
             BuildItemAdvice(actor);
+            LogDecision(battle, actor, actorGuid, plans);
+        }
+
+        private static string _logKey;
+
+        /// <summary>Logs the ranked choices once per decision point, for later comparison.</summary>
+        private static void LogDecision(object battle, object actor, uint actorGuid, int plans)
+        {
+            try
+            {
+                string key = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(battle) + ":"
+                             + ToInt(GetMember(battle, "CurrentRound")) + ":"
+                             + ToInt(GetMember(battle, "CurrentTurn")) + ":" + actorGuid;
+                if (key == _logKey)
+                {
+                    return;
+                }
+
+                _logKey = key;
+
+                Action<string> sink = RandomTrace.Sink;
+                if (sink == null)
+                {
+                    return;
+                }
+
+                sink("S DECIDE round=" + ToInt(GetMember(battle, "CurrentRound"))
+                     + " turn=" + ToInt(GetMember(battle, "CurrentTurn"))
+                     + " actor=" + ActorName(actor)
+                     + " choices=" + plans
+                     + (string.IsNullOrEmpty(_itemLine) ? string.Empty : " item=" + _itemLine));
+
+                for (int i = 0; i < Rows.Count && i < 3; i++)
+                {
+                    Row row = Rows[i];
+                    sink("S TOP" + (i + 1) + " " + row.Label + " [" + row.Score.ToString("F1") + "]");
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        /// <summary>Called when the player actually executes a skill: log it next to the ranking.</summary>
+        internal static void LogActual(string skillId, uint performerGuid)
+        {
+            try
+            {
+                Action<string> sink = RandomTrace.Sink;
+                if (sink == null || string.IsNullOrEmpty(skillId))
+                {
+                    return;
+                }
+
+                int rank = -1;
+                float score = 0f;
+                for (int i = 0; i < Rows.Count; i++)
+                {
+                    if (Rows[i].SkillId == skillId)
+                    {
+                        rank = i + 1;
+                        score = Rows[i].Score;
+                        break;
+                    }
+                }
+
+                sink("S ACTUAL skill=" + skillId
+                     + " name=" + SkillName(skillId)
+                     + " performer=" + performerGuid
+                     + (rank > 0 ? " solverRank=" + rank + " solverScore=" + score.ToString("F1") : " solverRank=none"));
+            }
+            catch
+            {
+            }
         }
 
         private static Row Score(object performer, object target, string skillId, uint targetGuid,

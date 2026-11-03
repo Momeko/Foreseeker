@@ -235,6 +235,17 @@ namespace DSH.Foreseeker
             Emit("FINALIZE skill=" + Field(result, "m_SkillId")
                  + " performer=" + Field(result, "m_PerformerActorGuid")
                  + " team=" + Str(__args, 1) + " seq=" + RandomTrace.TotalSeq);
+
+            try
+            {
+                string skillId = Field(result, "m_SkillId");
+                uint performer;
+                uint.TryParse(Field(result, "m_PerformerActorGuid"), out performer);
+                Solver.LogActual(skillId, performer);
+            }
+            catch
+            {
+            }
         }
 
         private static void OnPrecompute(object[] __args)
