@@ -1055,12 +1055,34 @@ namespace DSH.Foreseeker
 
             float cost = 5f * (damage / max) * HpRiskFactor(actor) * bufferRisk;
 
-            if (hp - damage <= 0f)
+            if (IsAtDeathsDoor(actor))
+            {
+                // Any further hit is a deathblow check: defend this unit, do not let it be hit.
+                cost += 20f;
+            }
+            else if (hp - damage <= 0f)
             {
                 cost += 3f; // entering death's door
             }
 
             return cost;
+        }
+
+        private static bool IsAtDeathsDoor(object actor)
+        {
+            if (actor == null)
+            {
+                return false;
+            }
+
+            var statuses = GetMember(actor, "m_Statuses") as Array;
+            if (statuses != null && statuses.Length > 0 && ToBool(statuses.GetValue(0)))
+            {
+                return true;
+            }
+
+            float hp = ToFloat(GetMember(actor, "m_Hp"));
+            return !float.IsNaN(hp) && hp <= 0f;
         }
 
         private static float BucketOf(object actor, object statType)

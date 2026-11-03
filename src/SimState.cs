@@ -891,6 +891,38 @@ namespace DSH.Foreseeker
         /// Runs the opponent peek on the current (already applied) state and returns the damage
         /// the predicted action would deal. The caller owns capture/restore.
         /// </summary>
+        /// <summary>Damage the actor takes from its own DOTs when its next turn starts.</summary>
+        private static float PendingDotDamage(object actor)
+        {
+            object container = GetMember(actor, "m_DotContainer");
+            if (container == null)
+            {
+                return 0f;
+            }
+
+            int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
+            float total = 0f;
+
+            for (int i = 0; i < count; i++)
+            {
+                object instance = Invoke(container, "GetInstanceAtIndex", i);
+                if (instance == null)
+                {
+                    continue;
+                }
+
+                float amount = ToFloat(GetMember(instance, "m_EffectValueChange"));
+                if (float.IsNaN(amount) || amount <= 0f)
+                {
+                    amount = 1f;
+                }
+
+                total += amount;
+            }
+
+            return total;
+        }
+
         internal static float PeekIncoming()
         {
             _lastPredDamage = 0f;
@@ -903,6 +935,27 @@ namespace DSH.Foreseeker
             }
 
             uint guid = ToUInt(GetMember(battle, "CurrentActorGuid"));
+
+            // The enemy's DOTs tick at the start of its own turn, before it acts.
+            object enemy = FindLivingEnemy(battle, guid);
+            if (enemy == null)
+            {
+                return 0f;
+            }
+
+            float dot = PendingDotDamage(enemy);
+            if (dot > 0f)
+            {
+                ApplyDamage(enemy, dot);
+            }
+
+            float hp = ToFloat(GetMember(enemy, "m_Hp"));
+            if (hp <= 0f || float.IsNaN(hp))
+            {
+                // Dies to its own DOT before acting: no retaliation this turn.
+                return 0f;
+            }
+
             PeekNextEnemy(battle, guid);
             return _lastPredDamage;
         }
