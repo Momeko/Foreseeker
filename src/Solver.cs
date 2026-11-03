@@ -441,74 +441,63 @@ namespace DSH.Foreseeker
                 return damage;
             }
 
-            object container = GetMember(actor, "m_TokenContainer");
-            if (container == null)
-            {
-                return damage;
-            }
-
-            int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
-            bool dodge = false;
-            bool dodgePlus = false;
-            bool block = false;
-            bool blockPlus = false;
-            bool vulnerable = false;
-
-            for (int i = 0; i < count; i++)
-            {
-                object instance = Invoke(container, "GetInstanceAtIndex", i);
-                object definition = instance == null ? null : GetMember(instance, "Definition");
-                string id = definition == null ? null : GetMember(definition, "m_Id") as string;
-
-                if (id == "dodge_plus")
-                {
-                    dodgePlus = true;
-                }
-                else if (id == "dodge")
-                {
-                    dodge = true;
-                }
-                else if (id == "block_plus")
-                {
-                    blockPlus = true;
-                }
-                else if (id == "block")
-                {
-                    block = true;
-                }
-                else if (id == "vulnerable")
-                {
-                    vulnerable = true;
-                }
-            }
-
-            // Dodge is a chance to avoid the hit (50%, 75% for dodge+); block halves the damage
-            // (25% for block+). Stacks of the same kind do not compound against one attack.
-            float factor = 1f;
-            if (dodgePlus)
-            {
-                factor *= 0.25f;
-            }
-            else if (dodge)
-            {
-                factor *= 0.5f;
-            }
-
-            if (blockPlus)
-            {
-                factor *= 0.25f;
-            }
-            else if (block)
-            {
-                factor *= 0.5f;
-            }
-
-            if (vulnerable)
+            float factor = DodgeFactor(actor) * BlockFactor(actor);
+            if (HasToken(actor, "vulnerable"))
             {
                 factor *= 1.5f;
             }
 
             return damage * factor;
+        }
+
+        /// <summary>Chance that an attack is avoided: dodge 50%, dodge+ 75%. Stacks do not compound.</summary>
+        private static float DodgeFactor(object actor)
+        {
+            if (HasToken(actor, "dodge_plus"))
+            {
+                return 0.25f;
+            }
+
+            return HasToken(actor, "dodge") ? 0.5f : 1f;
+        }
+
+        /// <summary>Damage multiplier for block: 50% / 75% reduction.</summary>
+        private static float BlockFactor(object actor)
+        {
+            if (HasToken(actor, "block_plus"))
+            {
+                return 0.25f;
+            }
+
+            return HasToken(actor, "block") ? 0.5f : 1f;
+        }
+
+        private static bool HasToken(object actor, string tokenId)
+        {
+            if (actor == null)
+            {
+                return false;
+            }
+
+            object container = GetMember(actor, "m_TokenContainer");
+            if (container == null)
+            {
+                return false;
+            }
+
+            int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
+            for (int i = 0; i < count; i++)
+            {
+                object instance = Invoke(container, "GetInstanceAtIndex", i);
+                object definition = instance == null ? null : GetMember(instance, "Definition");
+                string id = definition == null ? null : GetMember(definition, "m_Id") as string;
+                if (string.Equals(id, tokenId, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string SkillName(string skillId)
@@ -704,7 +693,10 @@ namespace DSH.Foreseeker
                         }
                         else if (polarity < 0)
                         {
-                            total -= holderSign * weight * amount;
+                            // A dodged attack never applies its debuff, so scale by the chance
+                            // the effect actually lands.
+                            float land = holderSign < 0f ? DodgeFactor(holder) : 1f;
+                            total -= holderSign * weight * amount * land;
                         }
                         else if (holderSign < 0f)
                         {
@@ -721,7 +713,8 @@ namespace DSH.Foreseeker
                     if (!string.IsNullOrEmpty(dotId))
                     {
                         int amount = Math.Max(1, ToInt(GetMember(instance, "DotAddAmount")));
-                        total -= holderSign * 1.0f * amount;
+                        float land = holderSign < 0f ? DodgeFactor(holder) : 1f;
+                        total -= holderSign * 1.0f * amount * land;
                         continue;
                     }
 
