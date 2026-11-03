@@ -308,7 +308,8 @@ namespace DSH.Foreseeker
             uint targetGuid;
             float damage;
             object target;
-            if (!TryFirstCandidate(battle, out skillId, out targetGuid, out damage, out target))
+            object actorResult;
+            if (!TryFirstCandidate(battle, out skillId, out targetGuid, out damage, out target, out actorResult))
             {
                 Log("APPTEST skip: no candidate result");
                 return;
@@ -326,6 +327,13 @@ namespace DSH.Foreseeker
 
             ApplyDamage(target, damage);
 
+            int tokens;
+            int dots;
+            float heal;
+            float stress;
+            int move;
+            ApplyActorResult(actorResult, out tokens, out dots, out heal, out stress, out move);
+
             float hpAfter = hpField == null ? float.NaN : Convert.ToSingle(hpField.GetValue(target));
             int afterApply = Mismatches().Count;
 
@@ -336,6 +344,11 @@ namespace DSH.Foreseeker
                 + " target=" + ActorLabel(target)
                 + " dmg=" + damage.ToString("F1")
                 + " hp=" + hpBefore.ToString("F1") + "->" + hpAfter.ToString("F1")
+                + " heal=" + heal.ToString("F1")
+                + " stress=" + stress.ToString("F1")
+                + " move=" + move
+                + " tok=" + tokens
+                + " dot=" + dots
                 + " cleanBefore=" + (cleanBefore == 0)
                 + " applied=" + (afterApply > 0)
                 + " restored=" + (afterRestore == 0)
@@ -361,13 +374,138 @@ namespace DSH.Foreseeker
             hpField.SetValue(actor, Math.Max(0f, current - damage));
         }
 
+        /// <summary>
+        /// Applies the non-damage part of a pre-rolled result: heals, stress, movement.
+        /// Tokens and DOTs are only counted for now (they need container APIs).
+        /// </summary>
+        internal static void ApplyActorResult(object actorResult, out int tokens, out int dots,
+                                              out float heal, out float stress, out int move)
+        {
+            tokens = 0;
+            dots = 0;
+            heal = 0f;
+            stress = 0f;
+            move = 0;
+
+            if (actorResult == null)
+            {
+                return;
+            }
+
+            object container = GetMember(actorResult, "m_AppliedEffectsOutputContainer");
+            var outputs = GetMember(container, "Outputs") as IEnumerable;
+            if (outputs == null)
+            {
+                return;
+            }
+
+            foreach (object output in outputs)
+            {
+                object holder = GetMember(output, "m_TargetActor");
+                if (holder == null)
+                {
+                    continue;
+                }
+
+                var instances = GetMember(output, "EffectInstancesToApply") as IEnumerable;
+                if (instances == null)
+                {
+                    continue;
+                }
+
+                foreach (object instance in instances)
+                {
+                    object definition = GetMember(instance, "EffectDefinition");
+                    if (definition == null)
+                    {
+                        continue;
+                    }
+
+                    float healAmount = ToFloat(GetMember(instance, "HealthHealAmount"));
+                    if (healAmount > 0f)
+                    {
+                        heal += healAmount;
+                        ApplyHealthDelta(holder, healAmount);
+                    }
+
+                    float stressDamage = ToFloat(GetMember(instance, "StressDamage"));
+                    if (stressDamage > 0f)
+                    {
+                        stress += stressDamage;
+                        ApplyStressDelta(holder, stressDamage);
+                    }
+
+                    float stressHeal = ToFloat(GetMember(instance, "StressHeal"));
+                    if (stressHeal > 0f)
+                    {
+                        stress -= stressHeal;
+                        ApplyStressDelta(holder, -stressHeal);
+                    }
+
+                    int moveAmount = ToInt(GetMember(instance, "Move"));
+                    if (moveAmount != 0)
+                    {
+                        move += moveAmount;
+                        ApplyMoveDelta(holder, moveAmount);
+                    }
+
+                    if (!string.IsNullOrEmpty(GetMember(definition, "m_TokenAddId") as string))
+                    {
+                        tokens += Math.Max(1, ToInt(GetMember(instance, "TokenAddAmount")));
+                    }
+
+                    if (!string.IsNullOrEmpty(GetMember(definition, "m_DotAddId") as string))
+                    {
+                        dots += Math.Max(1, ToInt(GetMember(instance, "DotAddAmount")));
+                    }
+                }
+            }
+        }
+
+        internal static void ApplyHealthDelta(object actor, float delta)
+        {
+            FieldInfo hpField = FindField(actor, "m_Hp");
+            if (hpField == null)
+            {
+                return;
+            }
+
+            float current = Convert.ToSingle(hpField.GetValue(actor));
+            hpField.SetValue(actor, Math.Max(0f, current + delta));
+        }
+
+        internal static void ApplyStressDelta(object actor, float delta)
+        {
+            FieldInfo stressField = FindField(actor, "m_Stress");
+            if (stressField == null)
+            {
+                return;
+            }
+
+            float current = Convert.ToSingle(stressField.GetValue(actor));
+            stressField.SetValue(actor, Math.Max(0f, current + delta));
+        }
+
+        internal static void ApplyMoveDelta(object actor, int delta)
+        {
+            FieldInfo offsetField = FindField(actor, "m_TargetTeamPositionOffset");
+            if (offsetField == null)
+            {
+                return;
+            }
+
+            int current = Convert.ToInt32(offsetField.GetValue(actor));
+            offsetField.SetValue(actor, current + delta);
+        }
+
         private static bool TryFirstCandidate(object battle, out string skillId, out uint targetGuid,
-                                              out float damage, out object target)
+                                              out float damage, out object target, out object actorResult)
         {
             skillId = null;
             targetGuid = 0;
             damage = 0f;
             target = null;
+            actorResult = null;
 
             object teams = GetMember(battle, "m_BattleTeams");
             uint actorGuid = ToUInt(GetMember(battle, "CurrentActorGuid"));
@@ -395,6 +533,7 @@ namespace DSH.Foreseeker
             uint fallbackTarget = 0;
             float fallbackDamage = 0f;
             object fallbackActor = null;
+            object fallbackResult = null;
 
             foreach (object entry in entries)
             {
@@ -442,6 +581,7 @@ namespace DSH.Foreseeker
                         targetGuid = guids[0];
                         damage = value;
                         target = candidate;
+                        actorResult = mapped;
                         return true;
                     }
 
@@ -452,6 +592,7 @@ namespace DSH.Foreseeker
                         fallbackTarget = guids[0];
                         fallbackDamage = value;
                         fallbackActor = candidate;
+                        fallbackResult = mapped;
                     }
                 }
             }
@@ -462,6 +603,7 @@ namespace DSH.Foreseeker
                 targetGuid = fallbackTarget;
                 damage = fallbackDamage;
                 target = fallbackActor;
+                actorResult = fallbackResult;
                 return true;
             }
 
@@ -801,6 +943,11 @@ namespace DSH.Foreseeker
         private static uint ToUInt(object value)
         {
             return value == null ? 0u : Convert.ToUInt32(value);
+        }
+
+        private static int ToInt(object value)
+        {
+            return value == null ? 0 : Convert.ToInt32(value);
         }
 
         private static float ToFloat(object value)
