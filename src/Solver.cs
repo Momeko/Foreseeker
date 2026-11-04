@@ -599,6 +599,55 @@ namespace DSH.Foreseeker
                     Rows.AddRange(targetRows);
                 }
             }
+            // The controller's entry list is often empty right at turn start. The precompute
+            // already holds every (skill, target) pair, so fall back to it instead of showing
+            // nothing but "pass".
+            if (byGuid.Count == 0)
+            {
+                foreach (DictionaryEntry pair in results)
+                {
+                    object input = pair.Key;
+                    if (input == null || ToUInt(GetMember(input, "m_PerformerGuid")) != actorGuid)
+                    {
+                        continue;
+                    }
+
+                    string fallbackSkill = GetMember(input, "m_SelectedSkillId") as string;
+                    uint fallbackTarget = ToUInt(GetMember(input, "m_TargetActorGuid"));
+                    if (string.IsNullOrEmpty(fallbackSkill) || fallbackTarget == 0)
+                    {
+                        continue;
+                    }
+
+                    object target = Invoke(teams, "GetActorFromActorGuid", fallbackTarget);
+                    var actorResults = GetMember(pair.Value, "ActorResults") as IEnumerable;
+                    if (target == null || actorResults == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (object mapped in actorResults)
+                    {
+                        if (ToUInt(GetMember(mapped, "m_TargetActorGuid")) != fallbackTarget)
+                        {
+                            continue;
+                        }
+
+                        float damage = ToFloat(GetMember(mapped, "HealthDamage"));
+                        if (float.IsNaN(damage))
+                        {
+                            damage = 0f;
+                        }
+
+                        bool crit = ToBool(GetMember(mapped, "IsCrit"));
+                        object hitValue = GetMember(mapped, "IsHit");
+                        bool hit = hitValue == null || ToBool(hitValue);
+                        Rows.Add(Score(actor, target, fallbackSkill, fallbackTarget, damage, crit, hit, mapped));
+                        break;
+                    }
+                }
+            }
+
 
             AddPassSkillRows(actor);
 
