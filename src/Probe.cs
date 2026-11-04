@@ -199,9 +199,14 @@ namespace DSH.Foreseeker
 
             if (string.Equals(to, "in_turn_select", StringComparison.OrdinalIgnoreCase))
             {
-                Emit("AUTOREQ seq=" + RandomTrace.TotalSeq);
-                SolverProbe.RequestAuto();
-                SimState.RequestAuto();
+                Emit("AUTOREQ seq=" + RandomTrace.TotalSeq + " boss=" + Solver.BossBattle);
+
+                // Boss fights carry tokens the sandbox cannot mirror: no rehearsal there.
+                if (!Solver.BossBattle)
+                {
+                    SolverProbe.RequestAuto();
+                    SimState.RequestAuto();
+                }
             }
         }
 

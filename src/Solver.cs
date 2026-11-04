@@ -331,6 +331,46 @@ namespace DSH.Foreseeker
             }
         }
 
+        private static bool _bossBattle;
+
+        /// <summary>Boss fights carry special tokens/mechanics the sandbox cannot mirror.</summary>
+        internal static bool BossBattle { get { return _bossBattle; } }
+
+        private static readonly HashSet<string> BossTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "boss", "end_boss", "biome_boss", "gang_boss", "cultist_boss", "kingdom_boss"
+        };
+
+        /// <summary>True when any living enemy carries a boss tag.</summary>
+        private static bool DetectBossBattle()
+        {
+            try
+            {
+                foreach (object enemy in TeamActors(1))
+                {
+                    object classData = GetMember(enemy, "m_ActorDataClass");
+                    var tags = classData == null ? null : GetMember(classData, "m_Tags") as IEnumerable;
+                    if (tags == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (object tag in tags)
+                    {
+                        string text = tag as string;
+                        if (!string.IsNullOrEmpty(text) && BossTags.Contains(text.Trim()))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
+        }
         private static void Build()
         {
             Rows.Clear();
@@ -346,6 +386,7 @@ namespace DSH.Foreseeker
 
             object teams = GetMember(battle, "m_BattleTeams");
             _teams = teams;
+            _bossBattle = DetectBossBattle();
             uint actorGuid = ToUInt(GetMember(battle, "CurrentActorGuid"));
             object actor = actorGuid == 0 ? null : Invoke(teams, "GetActorFromActorGuid", actorGuid);
             if (actor == null)
@@ -501,15 +542,22 @@ namespace DSH.Foreseeker
             AddPassSkillRows(actor);
 
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
-            ApplyLookahead(actor, ToInt(GetMember(battle, "CurrentRound")),
-                           ToInt(GetMember(battle, "CurrentTurn")), actorGuid);
+            if (!_bossBattle)
+
+            {
+
+                ApplyLookahead(actor, ToInt(GetMember(battle, "CurrentRound")),
+
+                               ToInt(GetMember(battle, "CurrentTurn")), actorGuid);
+
+            }
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
 
             string name = ActorName(actor);
             _header = "求解器 · " + name
                       + " · 第" + ToInt(GetMember(battle, "CurrentRound")) + "回合"
                       + " 第" + (ToInt(GetMember(battle, "CurrentTurn")) + 1) + "手"
-                      + " · " + plans + " 个选择 · 评分越高越好 · 按 F5 关闭";
+                      + " · " + plans + " 个选择 · 评分越高越好" + (_bossBattle ? "（Boss 战不做还手预演）" : string.Empty) + " · 按 F5 关闭";
 
             BuildItemAdvice(actor);
             LogDecision(battle, actor, actorGuid, plans);
