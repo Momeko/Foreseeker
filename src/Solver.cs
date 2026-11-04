@@ -703,9 +703,6 @@ namespace DSH.Foreseeker
             int effects;
             score += EffectValue(performer, actorResult, out effects);
 
-            bool killedTarget = after <= 0f && damage > 0f && !targetIsAlly;
-            score += PassiveValue(performer, killedTarget);
-
             // Position matters: a move skill walks to the ally it targets, and some skills carry
             // their own movement effect. Value the rank change by how many skills work there.
             float positionDelta = PositionDelta(performer, target, actorResult, targetGuid);
@@ -1887,126 +1884,6 @@ namespace DSH.Foreseeker
             }
         }
 
-        /// <summary>
-        /// Hero passives that fire when we act (on-attack / on-kill triggers). Event-triggered
-        /// effects are not part of the skill's precomputed output, so they are valued here.
-        /// </summary>
-        private static float PassiveValue(object actor, bool killed)
-        {
-            try
-            {
-                float total = 0f;
-                foreach (object data in ActorDataEffectsOf(actor))
-                {
-                    var triggers = GetMember(data, "m_ActorEffectTriggers") as IEnumerable;
-                    if (triggers == null)
-                    {
-                        continue;
-                    }
-
-                    foreach (object trigger in triggers)
-                    {
-                        object typeValue = GetMember(trigger, "m_ActorEffectType");
-                        string type = typeValue == null ? null : typeValue.ToString();
-                        if (string.IsNullOrEmpty(type))
-                        {
-                            continue;
-                        }
-
-                        string normalized = type.Replace("_", string.Empty).ToLowerInvariant();
-                        bool onAttack = normalized.Contains("onattackasperformertoperformer");
-                        bool onKill = normalized.Contains("onkillasperformertoperformer");
-                        if (!onAttack && !onKill)
-                        {
-                            continue;
-                        }
-
-                        if (onKill && !killed)
-                        {
-                            continue;
-                        }
-
-                        var effects = GetMember(trigger, "m_SourceEffects") as IEnumerable;
-                        if (effects == null)
-                        {
-                            continue;
-                        }
-
-                        foreach (object source in effects)
-                        {
-                            object definition = GetMember(source, "m_Definition")
-                                                ?? GetMember(source, "m_EffectDefinition");
-                            total += EffectDefinitionValue(definition);
-                        }
-                    }
-                }
-
-                return total;
-            }
-            catch
-            {
-                return 0f;
-            }
-        }
-
-        private static IEnumerable<object> ActorDataEffectsOf(object actor)
-        {
-            object classData = GetMember(actor, "m_ActorDataClass");
-            object pathData = GetMember(actor, "m_ActorDataPath");
-
-            object classEffects = classData == null ? null : GetMember(classData, "m_ActorDataEffects");
-            if (classEffects != null)
-            {
-                yield return classEffects;
-            }
-
-            object pathEffects = pathData == null ? null : GetMember(pathData, "m_ActorDataEffects");
-            if (pathEffects != null)
-            {
-                yield return pathEffects;
-            }
-        }
-
-        private static float EffectDefinitionValue(object definition)
-        {
-            if (definition == null)
-            {
-                return 0f;
-            }
-
-            string token = GetMember(definition, "m_TokenAddId") as string;
-            if (!string.IsNullOrEmpty(token))
-            {
-                int amount = Mathf.Max(1, ToInt(GetMember(definition, "m_TokenAddAmount")));
-                return TokenWeight(token) * amount;
-            }
-
-            string dot = GetMember(definition, "m_DotAddId") as string;
-            if (!string.IsNullOrEmpty(dot))
-            {
-                return Mathf.Max(1, ToInt(GetMember(definition, "m_DotAddAmount")));
-            }
-
-            float heal = ToFloat(GetMember(definition, "m_HealthHealAmount"));
-            if (heal > 0f)
-            {
-                return 5f * (heal / 20f);
-            }
-
-            float damage = ToFloat(GetMember(definition, "m_HealthDamageAmount"));
-            if (damage > 0f)
-            {
-                return 5f * (damage / Mathf.Max(1f, _avgEnemyMaxHp));
-            }
-
-            float stressHeal = ToFloat(GetMember(definition, "m_StressHeal"));
-            if (stressHeal > 0f)
-            {
-                return stressHeal;
-            }
-
-            return 0f;
-        }
         private static float BucketOf(object actor, object statType)
         {
             if (actor == null || statType == null)
