@@ -243,9 +243,15 @@ namespace DSH.Foreseeker
                 HarmonyLib.Harmony harmony = new HarmonyLib.Harmony(PluginGuid);
                 harmony.PatchAll();
                 ForetestLog.StartNew("session");
+                ForetestLog.WriteDebug("=== session start " + PluginVersion + " ===");
                 RandomTrace.Sink = message =>
                 {
                     Logger.LogInfo(message);
+                    if (message != null && message.Contains("LEAK"))
+                    {
+                        ForetestLog.WriteDebug(message);
+                    }
+
                     if (message != null && message.StartsWith("S ", StringComparison.Ordinal))
                     {
                         ForetestLog.Write(message);

@@ -16,6 +16,7 @@ namespace DSH.Foreseeker
         private static readonly object Gate = new object();
         private static string _path;
         private static string _directory;
+        private static string _debugPath;
 
         internal static string Directory
         {
@@ -37,6 +38,7 @@ namespace DSH.Foreseeker
                 if (_path == null)
                 {
                     _path = System.IO.Path.Combine(Directory, "foretest.log");
+                    _debugPath = System.IO.Path.Combine(Directory, "debug.log");
                 }
 
                 return _path;
@@ -69,6 +71,34 @@ namespace DSH.Foreseeker
             }
         }
 
+        /// <summary>Second, always-on debug channel: leak reports, lookahead errors and timings.</summary>
+        internal static void WriteDebug(string line)
+        {
+            if (string.IsNullOrEmpty(line))
+            {
+                return;
+            }
+
+            lock (Gate)
+            {
+                try
+                {
+                    System.IO.Directory.CreateDirectory(Directory);
+                    if (_debugPath == null)
+                    {
+                        _debugPath = System.IO.Path.Combine(Directory, "debug.log");
+                    }
+
+                    string text = DateTime.Now.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)
+                                  + " " + line + "\r\n";
+
+                    File.AppendAllText(_debugPath, text, new UTF8Encoding(false));
+                }
+                catch
+                {
+                }
+            }
+        }
         internal static void Write(string line)
         {
             if (string.IsNullOrEmpty(line))

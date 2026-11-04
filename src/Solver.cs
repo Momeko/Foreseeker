@@ -2616,6 +2616,7 @@ namespace DSH.Foreseeker
                     catch (Exception ex)
                     {
                         _header = "求解器前瞻出错：" + ex.GetType().Name;
+                            ForetestLog.WriteDebug("LOOKAHEAD-ERR " + ex.GetType().Name + ": " + ex.Message);
                     }
                     finally
                     {
@@ -2639,6 +2640,7 @@ namespace DSH.Foreseeker
                 float spent = (Time.realtimeSinceStartup - start) * 1000f;
                 if (spent > 120f)
                 {
+                    ForetestLog.WriteDebug("LOOKAHEAD-SLOW " + spent.ToString("0") + "ms");
                     Action<string> sink = RandomTrace.Sink;
                     if (sink != null)
                     {
