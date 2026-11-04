@@ -24,7 +24,7 @@ namespace DSH.Foreseeker
             {
                 if (_directory == null)
                 {
-                    _directory = System.IO.Path.Combine(Paths.PluginPath, "foretest");
+                    _directory = System.IO.Path.Combine(Paths.PluginPath, ForeseekerPlugin.PluginName.ToLowerInvariant());
                 }
 
                 return _directory;
