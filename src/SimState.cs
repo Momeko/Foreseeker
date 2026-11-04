@@ -564,6 +564,35 @@ namespace DSH.Foreseeker
             }
         }
 
+        /// <summary>True when the actor currently holds at least one stack of the token.</summary>
+        internal static bool HasTokenId(object actor, string tokenId)
+        {
+            try
+            {
+                object container = GetMember(actor, "m_TokenContainer");
+                if (container == null)
+                {
+                    return false;
+                }
+
+                int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
+                for (int i = 0; i < count; i++)
+                {
+                    object instance = Invoke(container, "GetInstanceAtIndex", i);
+                    object definition = instance == null ? null : GetMember(instance, "TokenDefinition");
+                    string id = definition == null ? null : GetMember(definition, "Id") as string;
+                    if (id == tokenId)
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
+        }
         private static int CountDeathArmor(object actor)
         {
             int total = 0;
@@ -1251,6 +1280,12 @@ namespace DSH.Foreseeker
             if (hp <= 0f || float.IsNaN(hp))
             {
                 // Dies to its own DOT before acting: no retaliation this turn.
+                return 0f;
+            }
+
+            // Stun skips the turn outright; daze only delays it, so it still acts.
+            if (HasTokenId(enemy, "stun"))
+            {
                 return 0f;
             }
 
