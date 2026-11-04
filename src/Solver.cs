@@ -1503,7 +1503,16 @@ namespace DSH.Foreseeker
                         if (limit > 0)
                         {
                             int existing = TokenStacks(holder, tokenId);
+                            int requested = amount;
                             amount = Mathf.Min(amount, Mathf.Max(0, limit - existing));
+
+                            Action<string> capSink = RandomTrace.Sink;
+                            if (capSink != null && amount != requested)
+                            {
+                                capSink("S TOKENCAP " + tokenId + " have=" + existing + " limit=" + limit
+                                        + " want=" + requested + " use=" + amount);
+                            }
+
                             if (amount <= 0)
                             {
                                 continue;
