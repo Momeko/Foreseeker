@@ -2782,7 +2782,6 @@ namespace DSH.Foreseeker
 
                 var rolls = PeekResistValues(24);
                 var seenTargets = new List<uint>();
-                var effectByTarget = new Dictionary<uint, string>();
                 int rollIndex = 0;
 
                 foreach (DictionaryEntry entry in results)
@@ -2812,6 +2811,16 @@ namespace DSH.Foreseeker
                         }
 
                         uint targetGuid = ToUInt(GetMember(actorResult, "m_TargetActorGuid"));
+
+                        // Duplicates are the same AOE result registered once per target: skip
+                        // them before describing effects, or they consume the peeked rolls.
+                        if (seenTargets.Contains(targetGuid))
+                        {
+                            continue;
+                        }
+
+                        seenTargets.Add(targetGuid);
+
                         ActorInstance target = GetActorInstance(targetGuid);
                         float damage = ToFloat(GetMember(actorResult, "HealthDamage"));
                         bool crit = ToBool(GetMember(actorResult, "IsCrit"));
@@ -2826,21 +2835,7 @@ namespace DSH.Foreseeker
                             line += "  " + effects;
                         }
 
-                        if (!seenTargets.Contains(targetGuid))
-                        {
-                            seenTargets.Add(targetGuid);
-                            effectByTarget[targetGuid] = effects;
-                            _playerLines.Add(line);
-                        }
-                        else if (effects.Length > 0 && effectByTarget[targetGuid].Length == 0)
-                        {
-                            int slot = seenTargets.IndexOf(targetGuid);
-                            if (slot >= 0)
-                            {
-                                _playerLines[slot] = line;
-                                effectByTarget[targetGuid] = effects;
-                            }
-                        }
+                        _playerLines.Add(line);
                     }
                 }
 
