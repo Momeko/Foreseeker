@@ -1537,6 +1537,28 @@ namespace DSH.Foreseeker
                             continue;
                         }
 
+                        // stun skips the turn outright; daze only delays it (and a second daze
+                        // upgrades into a stun), so they are not worth the same.
+                        if (tokenId == "stun" || tokenId == "daze")
+                        {
+                            bool becomesStun = tokenId == "stun" || TokenStacks(holder, "daze") > 0;
+                            if (TokenStacks(holder, becomesStun ? "stun" : "daze") > 0)
+                            {
+                                continue; // already has it, limit 1
+                            }
+
+                            float predicted = PredictedDamageOf(holder);
+                            float denied = predicted > 0f
+                                ? 5f * predicted / Mathf.Max(1f, PredictedVictimMaxHp(holder))
+                                : 0f;
+
+                            float value = becomesStun
+                                ? Mathf.Max(denied, 2f)
+                                : Mathf.Max(denied * 0.3f, 0.6f);
+
+                            total -= holderSign * value;
+                            continue;
+                        }
                         if (tokenId == "weak")
                         {
                             float predicted = PredictedDamageOf(holder);
@@ -2358,7 +2380,7 @@ namespace DSH.Foreseeker
                     return 0.3f;
                 case "vulnerable":
                 case "weak":
-                case "dazed":
+                case "daze":
                 case "stun":
                     return 1.0f;
                 case "guard":
