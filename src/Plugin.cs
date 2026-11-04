@@ -108,7 +108,7 @@ namespace DSH.Foreseeker
             "PredictWindowKey = F10\r\n" +
             "\r\n" +
             "; Harmony 随机流追踪（记录每次 GetValue/Range/CheckValue 的流与调用点）\r\n" +
-            "RandomTraceEnabled = true\r\n";
+            "RandomTraceEnabled = false\r\n";
 
         private bool _visible = true;
         private Rect _windowRect = new Rect(0f, 0f, WindowWidth, WindowHeight);
@@ -157,7 +157,7 @@ namespace DSH.Foreseeker
         private bool _stateVisible = true;
         private bool _stateVisibleDefault = true;
         private bool _enemyIntentEnabled = true;
-        private bool _randomTraceEnabled = true;
+        private bool _randomTraceEnabled = false;
         private string _enemyIntent = string.Empty;
         private string _playerStatus = string.Empty;
         private readonly List<string> _playerLines = new List<string>();
