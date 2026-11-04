@@ -35,6 +35,7 @@ namespace DSH.Foreseeker
         private static object _healthDamageStat;
         private static object _dealtStat;
         private static object _receivedStat;
+        private static object _deathResistStat;
         private static float _avgEnemyMaxHp = 13f;
         private static object _stressMaxStat;
         private static bool _statsResolved;
@@ -1535,8 +1536,8 @@ namespace DSH.Foreseeker
 
             if (IsAtDeathsDoor(actor))
             {
-                // Any further hit is a deathblow check: defend this unit, do not let it be hit.
-                cost += 20f;
+                // A hit here rolls a deathblow check: weigh it by the chance the check fails.
+                cost += 20f * DeathBlowChance(actor);
             }
             else if (hp - damage <= 0f)
             {
@@ -1586,6 +1587,31 @@ namespace DSH.Foreseeker
             {
                 return 0;
             }
+        }
+        /// <summary>
+        /// Chance that a hit on a deaths-door actor finishes it. Monsters carry no death
+        /// resistance (0), heroes sit around 0.6 and paths/buffs can shift it.
+        /// </summary>
+        private static float DeathBlowChance(object actor)
+        {
+            float resist;
+            try
+            {
+                object value = _deathResistStat == null
+                    ? null
+                    : Invoke(actor, "GetClampedStatValue", _deathResistStat);
+                resist = value == null ? 0.6f : ToFloat(value);
+                if (float.IsNaN(resist))
+                {
+                    resist = 0.6f;
+                }
+            }
+            catch
+            {
+                resist = 0.6f;
+            }
+
+            return Mathf.Clamp01(1f - resist);
         }
         private static bool IsAtDeathsDoor(object actor)
         {
@@ -2239,6 +2265,7 @@ namespace DSH.Foreseeker
                 _healthDamageStat = statType.GetField("HEALTH_DAMAGE", BindingFlags.Public | BindingFlags.Static).GetValue(null);
                 _dealtStat = statType.GetField("HEALTH_DAMAGE_DEALT_PERCENT", BindingFlags.Public | BindingFlags.Static).GetValue(null);
                 _receivedStat = statType.GetField("HEALTH_DAMAGE_RECEIVED_PERCENT", BindingFlags.Public | BindingFlags.Static).GetValue(null);
+                _deathResistStat = statType.GetField("DEATHS_DOOR_CHANCE", BindingFlags.Public | BindingFlags.Static).GetValue(null);
             }
             catch
             {
