@@ -761,8 +761,28 @@ namespace DSH.Foreseeker
                 float ratio = float.IsNaN(hp) ? 1f : hp / maxHp;
                 Dictionary<string, int> cooling = CoolingMap(actor);
 
+                // pass_heal fully replaces the plain pass when it is legal, so only one of them
+                // should ever be offered.
+                int healCooldown;
+                bool healAvailable = ratio < 0.25f
+                                     && !(cooling.TryGetValue("pass_heal", out healCooldown) && healCooldown > 0);
+                if (healAvailable)
+                {
+                    for (int i = Rows.Count - 1; i >= 0; i--)
+                    {
+                        if (Rows[i].SkillId == "pass_stress")
+                        {
+                            Rows.RemoveAt(i);
+                        }
+                    }
+                }
+
                 foreach (string id in PassSkillIds)
                 {
+                    if (id == "pass_stress" && healAvailable)
+                    {
+                        continue; // replaced by pass_heal
+                    }
                     bool already = false;
                     for (int i = 0; i < Rows.Count; i++)
                     {
