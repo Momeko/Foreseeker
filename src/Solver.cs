@@ -141,6 +141,7 @@ namespace DSH.Foreseeker
         /// </summary>
         private static int _partyLoggedBattle;
         private static bool _bossBattle;
+        private static int _debugTick;
 
         /// <summary>Boss fights carry special tokens/mechanics the sandbox cannot mirror.</summary>
         internal static bool BossBattle { get { return _bossBattle; } }
@@ -615,6 +616,12 @@ namespace DSH.Foreseeker
                       + " · 第" + ToInt(GetMember(battle, "CurrentRound")) + "回合"
                       + " 第" + (ToInt(GetMember(battle, "CurrentTurn")) + 1) + "手"
                       + " · " + plans + " 个选择 · 评分越高越好" + (_bossBattle ? "（Boss 战不做还手预演）" : string.Empty) + " · 按 F5 关闭";
+
+            ForetestLog.WriteDebug("DECIDE round=" + ToInt(GetMember(battle, "CurrentRound"))
+                                                   + " turn=" + ToInt(GetMember(battle, "CurrentTurn"))
+                                                   + " actor=" + ActorName(actor)
+                                                   + " choices=" + plans
+                                                   + (_bossBattle ? " boss=1" : string.Empty));
 
             BuildItemAdvice(actor);
             LogDecision(battle, actor, actorGuid, plans);
@@ -2702,13 +2709,16 @@ namespace DSH.Foreseeker
                 }
 
                 float spent = (Time.realtimeSinceStartup - start) * 1000f;
-                if (spent > 120f)
+                if (spent > 60f || _debugTick++ % 10 == 0)
                 {
-                    ForetestLog.WriteDebug("LOOKAHEAD-SLOW " + spent.ToString("0") + "ms");
-                    Action<string> sink = RandomTrace.Sink;
-                    if (sink != null)
+                    ForetestLog.WriteDebug("LOOKAHEAD ms=" + spent.ToString("0"));
+                    if (spent > 60f)
                     {
-                        sink("S solver lookahead took " + spent.ToString("F0") + "ms");
+                        Action<string> sink = RandomTrace.Sink;
+                        if (sink != null)
+                        {
+                            sink("S solver lookahead took " + spent.ToString("F0") + "ms");
+                        }
                     }
                 }
             }
