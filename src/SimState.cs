@@ -108,6 +108,8 @@ namespace DSH.Foreseeker
             _skillCalculation = GetMember(battle, "m_BattleSkillCalculation");
             _potentialDictionary = GetMember(_skillCalculation, "m_PotentialResults");
 
+            ArmorLeft.Clear();
+
             var actors = CollectActors(battle);
             for (int i = 0; i < actors.Count; i++)
             {
@@ -439,66 +441,61 @@ namespace DSH.Foreseeker
         }
 
         /// <summary>Burns one deaths_door_armor stack; false when the actor has none.</summary>
+        private static readonly System.Collections.Generic.Dictionary<uint, int> ArmorLeft =
+            new System.Collections.Generic.Dictionary<uint, int>();
+
+        /// <summary>
+        /// Burns one deaths_door_armor stack in a sandbox-only counter. The real token container is
+        /// never touched: removing a token there could survive a rollback.
+        /// </summary>
         private static bool ConsumeDeathArmor(object actor)
         {
             try
             {
-                object container = GetMember(actor, "m_TokenContainer");
-                if (container == null)
+                uint guid = ToUInt(GetMember(actor, "m_ActorGuid"));
+                int left;
+                if (!ArmorLeft.TryGetValue(guid, out left))
                 {
+                    left = CountDeathArmor(actor);
+                }
+
+                if (left <= 0)
+                {
+                    ArmorLeft[guid] = 0;
                     return false;
                 }
 
-                int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
-                for (int i = 0; i < count; i++)
-                {
-                    object instance = Invoke(container, "GetInstanceAtIndex", i);
-                    if (instance == null)
-                    {
-                        continue;
-                    }
-
-                    object definition = GetMember(instance, "TokenDefinition");
-                    string id = definition == null ? null : GetMember(definition, "Id") as string;
-                    if (id != "deaths_door_armor")
-                    {
-                        continue;
-                    }
-
-                    FieldInfo amount = FindField(instance, "m_Amount");
-                    if (amount != null)
-                    {
-                        int value = Convert.ToInt32(amount.GetValue(instance));
-                        if (value > 1)
-                        {
-                            amount.SetValue(instance, value - 1);
-                            return true;
-                        }
-                    }
-
-                    MethodInfo remove = null;
-                    foreach (MethodInfo method in container.GetType().GetMethods(Any))
-                    {
-                        if (method.Name == "Remove" && method.GetParameters().Length == 1)
-                        {
-                            remove = method;
-                            break;
-                        }
-                    }
-
-                    if (remove != null)
-                    {
-                        remove.Invoke(container, new[] { (object)instance });
-                    }
-
-                    return true;
-                }
+                ArmorLeft[guid] = left - 1;
+                return true;
             }
             catch
             {
+                return false;
+            }
+        }
+
+        private static int CountDeathArmor(object actor)
+        {
+            int total = 0;
+            object container = GetMember(actor, "m_TokenContainer");
+            if (container == null)
+            {
+                return 0;
             }
 
-            return false;
+            int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
+            for (int i = 0; i < count; i++)
+            {
+                object instance = Invoke(container, "GetInstanceAtIndex", i);
+                object definition = instance == null ? null : GetMember(instance, "TokenDefinition");
+                string id = definition == null ? null : GetMember(definition, "Id") as string;
+                if (id == "deaths_door_armor")
+                {
+                    total++;
+                }
+            }
+
+            return total;
         }
 
         private static object _tokenLibrary;
@@ -1465,7 +1462,7 @@ namespace DSH.Foreseeker
                         var snap = new FieldSnap { Target = target, Field = field, Value = value };
                         if (array)
                         {
-                            snap.ArrayValue = (Array)value;
+                            snap.ArrayValue = (Array)value == null ? null : (Array)((Array)value).Clone();
                             snap.Value = null;
                         }
 
