@@ -651,6 +651,47 @@ namespace DSH.Foreseeker
 
             AddPassSkillRows(actor);
 
+
+
+
+            // Two sources can emit the same row (controller entries and our pass rows): collapse them.
+
+
+
+            var seenRows = new HashSet<string>();
+
+
+
+            for (int i = Rows.Count - 1; i >= 0; i--)
+
+
+
+            {
+
+
+
+                string rowKey = Rows[i].Label + "|" + Rows[i].TargetGuid;
+
+
+
+                if (!seenRows.Add(rowKey))
+
+
+
+                {
+
+
+
+                    Rows.RemoveAt(i);
+
+
+
+                }
+
+
+
+            }
+
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
             if (!_bossBattle)
             {
@@ -1413,6 +1454,17 @@ namespace DSH.Foreseeker
                     }
 
                     float heal = ToFloat(GetMember(instance, "HealthHealAmount"));
+                    float healPercent = ToFloat(GetMember(instance, "HealthHealPercent"));
+                    if (float.IsNaN(healPercent))
+                    {
+                        healPercent = 0f;
+                    }
+
+                    if (healPercent > 0f)
+                    {
+                        heal += healPercent * Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
+                    }
+
                     if (heal > 0f)
                     {
                         parts.Add("治疗" + heal.ToString("0.#"));
@@ -1733,9 +1785,20 @@ namespace DSH.Foreseeker
                     }
 
                     float heal = ToFloat(GetMember(instance, "HealthHealAmount"));
+                    float healPercent = ToFloat(GetMember(instance, "HealthHealPercent"));
+                    if (float.IsNaN(healPercent))
+                    {
+                        healPercent = 0f;
+                    }
+
+                    float maxHp = Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
+                    if (healPercent > 0f)
+                    {
+                        heal += healPercent * maxHp;
+                    }
+
                     if (heal > 0f)
                     {
-                        float maxHp = Mathf.Max(1f, Stat(holder, _healthMaxStat, "m_Hp"));
                         float hp = ToFloat(GetMember(holder, "m_Hp"));
                         float effective = Mathf.Max(0f, Mathf.Min(heal, maxHp - hp));
                         total += holderSign * 5f * (effective / maxHp) * HpRiskFactor(holder);
