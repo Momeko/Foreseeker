@@ -1744,30 +1744,18 @@ namespace DSH.Foreseeker
                     return 0;
                 }
 
-                int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
-                int total = 0;
-                for (int i = 0; i < count; i++)
+                // The game's own counter: scanning instances missed the per-instance amount.
+                object counted = Invoke(container, "GetNumberOfTokensWithId", tokenId, false);
+                if (counted != null)
                 {
-                    object instance = Invoke(container, "GetInstanceAtIndex", i);
-                    if (instance == null)
-                    {
-                        continue;
-                    }
-
-                    object definition = GetMember(instance, "TokenDefinition");
-                    string id = definition == null ? null : GetMember(definition, "Id") as string;
-                    if (id == tokenId)
-                    {
-                        total += Mathf.Max(1, ToInt(GetMember(instance, "m_Amount")));
-                    }
+                    return ToInt(counted);
                 }
-
-                return total;
             }
             catch
             {
-                return 0;
             }
+
+            return 0;
         }
         /// <summary>
         /// Chance that a hit on a deaths-door actor finishes it. Monsters carry no death
