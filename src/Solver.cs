@@ -2204,6 +2204,11 @@ namespace DSH.Foreseeker
                         }
 
                         object definition = Invoke(library, "GetLibraryElement", id);
+                        if (definition == null || ToBool(GetMember(definition, "m_AverageRankIgnored")))
+                        {
+                            continue; // usable from any rank, so it says nothing about position
+                        }
+
                         var ranks = GetMember(definition, "m_LaunchRanks") as IEnumerable;
                         if (ranks == null)
                         {
