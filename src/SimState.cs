@@ -72,9 +72,43 @@ namespace DSH.Foreseeker
                 return;
             }
 
+            // Never rehearse on the enemy's turn: applying their skill on live objects is the
+            // riskiest thing the sandbox does.
             _autoRequested = false;
+            if (!IsOurActorCurrent())
+            {
+                return;
+            }
+
             _nextAuto = Time.realtimeSinceStartup + 1.5f;
             ApplyTest();
+        }
+
+        /// <summary>True when the actor whose turn it is belongs to the player's team.</summary>
+        internal static bool IsOurActorCurrent()
+        {
+            try
+            {
+                object battle = Battle;
+                if (battle == null)
+                {
+                    return false;
+                }
+
+                uint guid = ToUInt(GetMember(battle, "CurrentActorGuid"));
+                if (guid == 0)
+                {
+                    return false;
+                }
+
+                object teams = GetMember(battle, "m_BattleTeams");
+                object actor = Invoke(teams, "GetActorFromActorGuid", guid);
+                return actor != null && ToInt(GetMember(actor, "m_TeamIndex")) == 0;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         internal static object Battle
