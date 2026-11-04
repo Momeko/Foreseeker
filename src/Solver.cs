@@ -142,6 +142,9 @@ namespace DSH.Foreseeker
         private static int _partyLoggedBattle;
         private static bool _bossBattle;
 
+        /// <summary>Boss fights carry special tokens/mechanics the sandbox cannot mirror.</summary>
+        internal static bool BossBattle => _bossBattle;
+
         /// <summary>Logs the party's classes and paths once per battle, so a run can be labelled.</summary>
         private static void LogParty(object battle)
         {
@@ -599,15 +602,22 @@ namespace DSH.Foreseeker
             AddPassSkillRows(actor);
 
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
-            ApplyLookahead(actor, ToInt(GetMember(battle, "CurrentRound")),
-                           ToInt(GetMember(battle, "CurrentTurn")), actorGuid);
+            if (!_bossBattle)
+
+            {
+
+                ApplyLookahead(actor, ToInt(GetMember(battle, "CurrentRound")),
+
+                               ToInt(GetMember(battle, "CurrentTurn")), actorGuid);
+
+            }
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
 
             string name = ActorName(actor);
             _header = "求解器 · " + name
                       + " · 第" + ToInt(GetMember(battle, "CurrentRound")) + "回合"
                       + " 第" + (ToInt(GetMember(battle, "CurrentTurn")) + 1) + "手"
-                      + " · " + plans + " 个选择 · 评分越高越好 · 按 F5 关闭";
+                      + " · " + plans + " 个选择 · 评分越高越好" + (_bossBattle ? "（Boss 战不做还手预演）" : string.Empty) + " · 按 F5 关闭";
 
             BuildItemAdvice(actor);
             LogDecision(battle, actor, actorGuid, plans);
