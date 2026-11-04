@@ -116,7 +116,19 @@ namespace DSH.Foreseeker
                 CaptureContainer(actors[i], "m_DotContainer");
                 CaptureContainer(actors[i], "m_BuffContainer");
                 CaptureListField(actors[i], "m_SkillCooldowns");
+
+                // The enemy peek runs its real controller, which rewrites the entry list.
+                object controller = GetMember(actors[i], "m_ActorController") ?? GetMember(actors[i], "Controller");
+                if (controller != null)
+                {
+                    CaptureObject(controller);
+                    CaptureListField(controller, "m_SkillTargetEntries");
+                }
             }
+
+            // Battle-level bookkeeping the precompute / controller may touch.
+            CaptureObject(battle);
+            CaptureObject(GetMember(battle, "m_BattleTracking"));
 
             return true;
         }
