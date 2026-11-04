@@ -718,9 +718,25 @@ namespace DSH.Foreseeker
                 }
             }
 
+            if (trueKill && targetIsAlly)
+            {
+                // Losing a hero is never an option: prune this line entirely.
+                return new Row
+                {
+                    Label = SkillName(skillId) + " → " + ActorName(target) + "   会死人，不可选",
+                    Score = -100000f,
+                    Tint = new Color(0.75f, 0.30f, 0.30f),
+                    SkillId = skillId,
+                    TargetGuid = targetGuid,
+                    Damage = 0f,
+                    ActorResult = null,
+                    TargetName = ActorName(target)
+                };
+            }
+
             if (trueKill)
             {
-                score += targetIsAlly ? -1000f : 30f;
+                score += 30f;
 
                 // Killing the enemy that was about to strike prevents its predicted damage.
                 if (!targetIsAlly)
@@ -2426,12 +2442,28 @@ namespace DSH.Foreseeker
 
                         float incoming = SimState.PeekIncoming();
                         uint victimGuid = SimState.PeekIncomingVictim();
+                        float penalty = 0f;
                         if (incoming > 0f && victimGuid != 0)
                         {
                             object victim = Invoke(_teams, "GetActorFromActorGuid", victimGuid);
                             incoming = Mitigate(victim, incoming);
-                            float maxHp = Mathf.Max(1f, Stat(victim, _healthMaxStat, "m_Hp"));
-                            _lookaheadPenalties[row.SkillId + "@" + row.TargetGuid] = HpLossCost(victim, incoming);
+                            penalty += HpLossCost(victim, incoming);
+                        }
+
+                        // A deaths-door hero who still carries DOT rolls a deathblow at turn start.
+                        foreach (object ally in TeamActors(0))
+                        {
+                            if (!IsAtDeathsDoor(ally) || PendingDotDamage(ally) <= 0f)
+                            {
+                                continue;
+                            }
+
+                            penalty += 20f * DeathBlowChance(ally);
+                        }
+
+                        if (penalty > 0f)
+                        {
+                            _lookaheadPenalties[row.SkillId + "@" + row.TargetGuid] = penalty;
                         }
                     }
                     catch (Exception ex)
