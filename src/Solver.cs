@@ -143,7 +143,7 @@ namespace DSH.Foreseeker
         private static bool _bossBattle;
 
         /// <summary>Boss fights carry special tokens/mechanics the sandbox cannot mirror.</summary>
-        internal static bool BossBattle => _bossBattle;
+        internal static bool BossBattle { get { return _bossBattle; } }
 
         /// <summary>Logs the party's classes and paths once per battle, so a run can be labelled.</summary>
         private static void LogParty(object battle)
@@ -603,14 +603,11 @@ namespace DSH.Foreseeker
 
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
             if (!_bossBattle)
-
             {
-
                 ApplyLookahead(actor, ToInt(GetMember(battle, "CurrentRound")),
-
                                ToInt(GetMember(battle, "CurrentTurn")), actorGuid);
-
             }
+
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
 
             string name = ActorName(actor);
