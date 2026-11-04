@@ -77,6 +77,7 @@ namespace DSH.Foreseeker
         private static uint _itemTargetGuid;
         private static object _itemResult;
         private static float _itemScore;
+        private static string _itemAdviceKey;
 
         private static MethodInfo _addPotentialMethod;
 
@@ -237,13 +238,60 @@ namespace DSH.Foreseeker
         }
         private static void BuildItemAdvice(object actor)
         {
-            _itemLine = string.Empty;
-            _itemTargetGuid = 0;
-            _itemResult = null;
-            _itemScore = 0f;
-
             try
             {
+                object battleState = SimState.Battle;
+                if (battleState != null)
+                {
+                    // Item value only changes with the battle state: cache per decision.
+                    var keyBuilder = new System.Text.StringBuilder();
+                    keyBuilder.Append(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(battleState))
+                              .Append(':')
+                              .Append(ToInt(GetMember(battleState, "CurrentRound"))).Append(':')
+                              .Append(ToInt(GetMember(battleState, "CurrentTurn"))).Append(':')
+                              .Append(ToUInt(GetMember(actor, "m_ActorGuid")));
+
+                    object teamsField = GetMember(battleState, "m_BattleTeams");
+                    var teamList = GetMember(teamsField, "m_Teams") as IEnumerable;
+                    if (teamList != null)
+                    {
+                        foreach (object team in teamList)
+                        {
+                            var members = GetMember(team, "m_Actors") as IEnumerable;
+                            if (members == null)
+                            {
+                                continue;
+                            }
+
+                            foreach (object member in members)
+                            {
+                                if (member == null)
+                                {
+                                    continue;
+                                }
+
+                                keyBuilder.Append('|')
+                                          .Append(ToFloat(GetMember(member, "m_Hp")).ToString("0.#"))
+                                          .Append(',')
+                                          .Append(ToInt(GetMember(member, "m_TeamPosition")));
+                            }
+                        }
+                    }
+
+                    string adviceKey = keyBuilder.ToString();
+                    if (adviceKey == _itemAdviceKey)
+                    {
+                        return;
+                    }
+
+                    _itemAdviceKey = adviceKey;
+                }
+
+                _itemLine = string.Empty;
+                _itemTargetGuid = 0;
+                _itemResult = null;
+                _itemScore = 0f;
+
                 object inventory = GetMember(actor, "m_CombatInventory");
                 if (inventory == null)
                 {
