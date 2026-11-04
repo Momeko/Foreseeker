@@ -2928,12 +2928,20 @@ namespace DSH.Foreseeker
                         }
 
                         float resist = ComputeResist(instance, target, performer);
-                        // the container only holds effects the game already resolved as applying
-                        string text = label + " ✔挂上";
-                        if (resist >= 0.001f)
+                        string text = label;
+                        if (resist >= 0.001f && rollIndex < rolls.Count)
                         {
+                            // The precompute keeps the effect whether or not it lands; the resist
+                            // roll is consumed at apply time, so compare the peeked roll.
+                            bool resisted = rolls[rollIndex] < resist;
+                            text += resisted ? " ✘被抵抗" : " ✔挂上";
                             text += " 抵抗" + (resist * 100f).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "%";
                         }
+                        else
+                        {
+                            text += " ✔挂上";
+                        }
+
                         rollIndex++;
                         parts.Add(text);
                     }
