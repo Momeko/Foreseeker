@@ -2868,6 +2868,14 @@ namespace DSH.Foreseeker
                 hp = ToFloat(GetMember(actor, "m_Hp"));
             }
 
+            // Enemies are told apart by rank: 失落之人（1） is the rank-1 one.
+            int team = ToInt(GetMember(actor, "m_TeamIndex"));
+            int position = ToInt(GetMember(actor, "m_TeamPosition"));
+            if (team != 0 && position >= 0)
+            {
+                name += "（" + (position + 1) + "）";
+            }
+
             return name + " (HP " + hp.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + ")";
         }
 
