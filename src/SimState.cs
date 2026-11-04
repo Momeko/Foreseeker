@@ -414,7 +414,77 @@ namespace DSH.Foreseeker
             }
 
             float current = Convert.ToSingle(hpField.GetValue(actor));
+
+            // At death's door a hit burns a deaths_door_armor stack instead of killing.
+            if (current <= 0f && damage > 0f && ConsumeDeathArmor(actor))
+            {
+                return;
+            }
+
             hpField.SetValue(actor, Math.Max(0f, current - damage));
+        }
+
+        /// <summary>Burns one deaths_door_armor stack; false when the actor has none.</summary>
+        private static bool ConsumeDeathArmor(object actor)
+        {
+            try
+            {
+                object container = GetMember(actor, "m_TokenContainer");
+                if (container == null)
+                {
+                    return false;
+                }
+
+                int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
+                for (int i = 0; i < count; i++)
+                {
+                    object instance = Invoke(container, "GetInstanceAtIndex", i);
+                    if (instance == null)
+                    {
+                        continue;
+                    }
+
+                    object definition = GetMember(instance, "TokenDefinition");
+                    string id = definition == null ? null : GetMember(definition, "Id") as string;
+                    if (id != "deaths_door_armor")
+                    {
+                        continue;
+                    }
+
+                    FieldInfo amount = FindField(instance, "m_Amount");
+                    if (amount != null)
+                    {
+                        int value = Convert.ToInt32(amount.GetValue(instance));
+                        if (value > 1)
+                        {
+                            amount.SetValue(instance, value - 1);
+                            return true;
+                        }
+                    }
+
+                    MethodInfo remove = null;
+                    foreach (MethodInfo method in container.GetType().GetMethods(Any))
+                    {
+                        if (method.Name == "Remove" && method.GetParameters().Length == 1)
+                        {
+                            remove = method;
+                            break;
+                        }
+                    }
+
+                    if (remove != null)
+                    {
+                        remove.Invoke(container, new[] { (object)instance });
+                    }
+
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
         }
 
         private static object _tokenLibrary;
