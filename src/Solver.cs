@@ -790,7 +790,33 @@ namespace DSH.Foreseeker
             float sign = targetIsAlly ? -1f : 1f;
             float score = sign * HpLossCost(target, damage);
             string avoidedText = string.Empty;
-            if (after <= 0f && damage > 0f)
+
+            // Death's door armor absorbs a deathblow: reaching 0 HP only opens the door, and an
+            // armored actor survives the finishing hit by burning one stack.
+            bool atDeathsDoor = IsAtDeathsDoor(target);
+            bool lethalHit = after <= 0f && damage > 0f;
+            int deathArmor = TokenStacks(target, "deaths_door_armor");
+            bool trueKill = false;
+
+            if (lethalHit)
+            {
+                if (atDeathsDoor && deathArmor > 0)
+                {
+                    score += 3f; // armor broken, target still alive
+                    avoidedText += "  破甲" + deathArmor;
+                }
+                else if (atDeathsDoor)
+                {
+                    trueKill = true;
+                }
+                else
+                {
+                    // Entering death's door from above 0 HP: progress, not a kill.
+                    score += targetIsAlly ? 3f : 2f;
+                }
+            }
+
+            if (trueKill)
             {
                 score += targetIsAlly ? -1000f : 30f;
 
@@ -1619,6 +1645,47 @@ namespace DSH.Foreseeker
             return cost;
         }
 
+        /// <summary>How many stacks of a token the actor currently holds.</summary>
+        private static int TokenStacks(object actor, string tokenId)
+        {
+            if (actor == null || string.IsNullOrEmpty(tokenId))
+            {
+                return 0;
+            }
+
+            try
+            {
+                object container = GetMember(actor, "m_TokenContainer");
+                if (container == null)
+                {
+                    return 0;
+                }
+
+                int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
+                int total = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    object instance = Invoke(container, "GetInstanceAtIndex", i);
+                    if (instance == null)
+                    {
+                        continue;
+                    }
+
+                    object definition = GetMember(instance, "TokenDefinition");
+                    string id = definition == null ? null : GetMember(definition, "Id") as string;
+                    if (id == tokenId)
+                    {
+                        total += Mathf.Max(1, ToInt(GetMember(instance, "m_Amount")));
+                    }
+                }
+
+                return total;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
         private static bool IsAtDeathsDoor(object actor)
         {
             if (actor == null)
