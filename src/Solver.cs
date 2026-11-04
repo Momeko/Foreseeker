@@ -2620,6 +2620,18 @@ namespace DSH.Foreseeker
                     finally
                     {
                         SimState.Restore();
+
+                        // Anything still different after the rollback is a leak into the real battle.
+                        string leak = SimState.LeakReport(4);
+                        if (!string.IsNullOrEmpty(leak))
+                        {
+                            Action<string> leakSink = RandomTrace.Sink;
+                            if (leakSink != null)
+                            {
+                                leakSink("S LEAK " + leak);
+                            }
+                        }
+
                         SimState.Clear();
                     }
                 }
