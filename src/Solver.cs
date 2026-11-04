@@ -1042,12 +1042,12 @@ namespace DSH.Foreseeker
                 return 1f - chance;
             }
 
-            if (HasToken(actor, "dodge_plus"))
+            if (HasToken(actor, "dodge_plus") || SimState.OverlayCount(actor, "dodge_plus") > 0)
             {
                 return 0.25f;
             }
 
-            return HasToken(actor, "dodge") ? 0.5f : 1f;
+            return (HasToken(actor, "dodge") || SimState.OverlayCount(actor, "dodge") > 0) ? 0.5f : 1f;
         }
 
         private static object _evadeTokenType;
@@ -1114,12 +1114,12 @@ namespace DSH.Foreseeker
         /// <summary>Damage multiplier for block: 50% / 75% reduction.</summary>
         private static float BlockFactor(object actor)
         {
-            if (HasToken(actor, "block_plus"))
+            if (HasToken(actor, "block_plus") || SimState.OverlayCount(actor, "block_plus") > 0)
             {
                 return 0.25f;
             }
 
-            return HasToken(actor, "block") ? 0.5f : 1f;
+            return (HasToken(actor, "block") || SimState.OverlayCount(actor, "block") > 0) ? 0.5f : 1f;
         }
 
         private static bool HasToken(object actor, string tokenId)

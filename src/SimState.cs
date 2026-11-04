@@ -109,6 +109,7 @@ namespace DSH.Foreseeker
             _potentialDictionary = GetMember(_skillCalculation, "m_PotentialResults");
 
             ArmorLeft.Clear();
+            TokenOverlay.Clear();
 
             var actors = CollectActors(battle);
             for (int i = 0; i < actors.Count; i++)
@@ -511,6 +512,9 @@ namespace DSH.Foreseeker
         }
 
         /// <summary>Burns one deaths_door_armor stack; false when the actor has none.</summary>
+        private static readonly System.Collections.Generic.Dictionary<uint, System.Collections.Generic.Dictionary<string, int>> TokenOverlay =
+            new System.Collections.Generic.Dictionary<uint, System.Collections.Generic.Dictionary<string, int>>();
+
         private static readonly System.Collections.Generic.Dictionary<uint, int> ArmorLeft =
             new System.Collections.Generic.Dictionary<uint, int>();
 
@@ -576,7 +580,8 @@ namespace DSH.Foreseeker
                 }
 
                 object counted = Invoke(container, "GetNumberOfTokensWithId", tokenId, false);
-                return counted != null && ToInt(counted) > 0;
+                int live = counted == null ? 0 : ToInt(counted);
+                return live + OverlayCount(actor, tokenId) > 0;
             }
             catch
             {
@@ -642,7 +647,8 @@ namespace DSH.Foreseeker
                 }
 
                 object counted = Invoke(container, "GetNumberOfTokensWithId", "deaths_door_armor", false);
-                return counted == null ? 0 : ToInt(counted);
+                int live = counted == null ? 0 : ToInt(counted);
+                return live + OverlayCount(actor, "deaths_door_armor");
             }
             catch
             {
@@ -688,46 +694,45 @@ namespace DSH.Foreseeker
         /// <summary>Adds one token instance to the holder's live container (undone by Restore).</summary>
         private static void ApplyToken(object holder, uint performerGuid, string tokenId, int amount)
         {
-            ResolveApplyRefs();
-            if (_tokenLibrary == null || _skillSourceType == null)
+            // Sandbox-only: real token containers are never touched, so nothing can leak into the
+            // live battle (a leaked taunt changed how the enemy targeted us).
+            try
             {
-                return;
-            }
-
-            object container = GetMember(holder, "m_TokenContainer");
-            if (container == null)
-            {
-                return;
-            }
-
-            object definition = Invoke(_tokenLibrary, "GetLibraryElement", tokenId);
-            if (definition == null)
-            {
-                return;
-            }
-
-            foreach (MethodInfo method in container.GetType().GetMethods(Any))
-            {
-                if (method.Name != "Add" || method.GetParameters().Length != 10)
+                uint holderGuid = ToUInt(GetMember(holder, "m_ActorGuid"));
+                System.Collections.Generic.Dictionary<string, int> perActor;
+                if (!TokenOverlay.TryGetValue(holderGuid, out perActor))
                 {
-                    continue;
+                    perActor = new System.Collections.Generic.Dictionary<string, int>();
+                    TokenOverlay[holderGuid] = perActor;
                 }
 
-                try
-                {
-                    method.Invoke(container, new object[]
-                    {
-                        definition, false, false, _skillSourceType, "solver", performerGuid,
-                        amount, false, false, false
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Log("token add failed " + tokenId + ": " + ex.GetType().Name);
-                }
-
-                return;
+                int current;
+                perActor.TryGetValue(tokenId, out current);
+                perActor[tokenId] = current + Math.Max(1, amount);
             }
+            catch
+            {
+            }
+        }
+
+        /// <summary>Tokens added by the sandbox this lookahead (real containers stay untouched).</summary>
+        internal static int OverlayCount(object actor, string tokenId)
+        {
+            try
+            {
+                uint guid = ToUInt(GetMember(actor, "m_ActorGuid"));
+                System.Collections.Generic.Dictionary<string, int> perActor;
+                int count;
+                if (TokenOverlay.TryGetValue(guid, out perActor) && perActor.TryGetValue(tokenId, out count))
+                {
+                    return count;
+                }
+            }
+            catch
+            {
+            }
+
+            return 0;
         }
 
         /// <summary>Adds a DOT instance (strength + duration set) to the holder's live container.</summary>
