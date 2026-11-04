@@ -805,6 +805,11 @@ namespace DSH.Foreseeker
         /// Applies the pending position offsets the way the game does at skill finalize:
         /// recompute the whole team order, then renumber from rank 1. Restored by the snapshot.
         /// </summary>
+        /// <summary>
+        /// Applies pending position offsets as an "insert at the target rank" move. Done entirely
+        /// in our own snapshot-able fields (m_TeamPosition / offset) so the real battle never sees
+        /// a reorder: calling the game's sorter on live actors leaked positions into the battle.
+        /// </summary>
         internal static void ApplyMovement()
         {
             try
@@ -818,24 +823,6 @@ namespace DSH.Foreseeker
                 object teams = GetMember(battle, "m_BattleTeams");
                 var teamList = GetMember(teams, "m_Teams") as IEnumerable;
                 if (teamList == null)
-                {
-                    return;
-                }
-
-                if (_positionCalcType == null)
-                {
-                    _positionCalcType = typeof(SkillCalculation).Assembly.GetType(
-                        "Assets.Code.Actor.ActorTeamPositionCalculation");
-                }
-
-                if (_positionCalcType == null)
-                {
-                    return;
-                }
-
-                MethodInfo sort = _positionCalcType.GetMethod("SortActorsByTargetTeamPositions");
-                MethodInfo set = _positionCalcType.GetMethod("SetActorTeamPositions");
-                if (sort == null || set == null)
                 {
                     return;
                 }
@@ -863,8 +850,35 @@ namespace DSH.Foreseeker
                         continue;
                     }
 
-                    object sorted = sort.Invoke(null, new object[] { list });
-                    set.Invoke(null, new object[] { sorted, true, true });
+                    list.Sort((a, b) => GetPosition(a).CompareTo(GetPosition(b)));
+
+                    bool moved = false;
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        ActorInstance actor = list[i];
+                        int offset = ToInt(GetMember(actor, "m_TargetTeamPositionOffset"));
+                        if (offset == 0)
+                        {
+                            continue;
+                        }
+
+                        int from = list.IndexOf(actor);
+                        list.RemoveAt(from);
+                        int to = Mathf.Clamp(from + offset, 0, list.Count);
+                        list.Insert(to, actor);
+                        SetField(actor, "m_TargetTeamPositionOffset", 0);
+                        moved = true;
+                    }
+
+                    if (!moved)
+                    {
+                        continue;
+                    }
+
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        SetField(list[i], "m_TeamPosition", i);
+                    }
                 }
             }
             catch (Exception ex)
@@ -873,6 +887,19 @@ namespace DSH.Foreseeker
             }
         }
 
+        private static int GetPosition(object actor)
+        {
+            return ToInt(GetMember(actor, "m_TeamPosition"));
+        }
+
+        private static void SetField(object target, string name, object value)
+        {
+            FieldInfo field = FindField(target, name);
+            if (field != null)
+            {
+                field.SetValue(target, value);
+            }
+        }
         internal static void ApplyHealthDelta(object actor, float delta)
         {
             FieldInfo hpField = FindField(actor, "m_Hp");
