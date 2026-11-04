@@ -192,7 +192,9 @@ namespace DSH.Foreseeker
 
                 ResetTokenConsumes();
                 RandomContainer.LoadFromJson((JObject)_rng);
-                return true;
+            SanitizeDeathsDoor();
+
+            return true;
             }
             catch (Exception ex)
             {
@@ -201,6 +203,53 @@ namespace DSH.Foreseeker
             }
         }
 
+        /// <summary>
+        /// Belt and braces after a rollback: an actor above 0 HP can never be at death's door.
+        /// Clears a stuck status bit left by an interrupted lookahead.
+        /// </summary>
+        private static void SanitizeDeathsDoor()
+        {
+            try
+            {
+                object battle = Battle;
+                if (battle == null)
+                {
+                    return;
+                }
+
+                object teams = GetMember(battle, "m_BattleTeams");
+                var teamList = GetMember(teams, "m_Teams") as IEnumerable;
+                if (teamList == null)
+                {
+                    return;
+                }
+
+                foreach (object team in teamList)
+                {
+                    var actors = GetMember(team, "m_Actors") as IEnumerable;
+                    if (actors == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (object actor in actors)
+                    {
+                        if (actor == null)
+                        {
+                            continue;
+                        }
+
+                        if (ToFloat(GetMember(actor, "m_Hp")) > 0f)
+                        {
+                            SetDeathsDoorStatus(actor, false);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
         internal static void Clear()
         {
             Fields.Clear();
@@ -458,7 +507,7 @@ namespace DSH.Foreseeker
 
             float next = Math.Max(0f, current - damage);
             hpField.SetValue(actor, next);
-            SetDeathsDoorStatus(actor, next <= 0f);
+            SetDeathsDoorStatus(actor, next <= 0f && CanEnterDeathsDoor(actor));
         }
 
         /// <summary>Burns one deaths_door_armor stack; false when the actor has none.</summary>
@@ -469,6 +518,26 @@ namespace DSH.Foreseeker
         /// Burns one deaths_door_armor stack in a sandbox-only counter. The real token container is
         /// never touched: removing a token there could survive a rollback.
         /// </summary>
+        /// <summary>
+        /// Only heroes (and enemies carrying deaths_door_armor) survive at 0 HP; a plain monster
+        /// dies, so it must never get the deaths-door status bit.
+        /// </summary>
+        private static bool CanEnterDeathsDoor(object actor)
+        {
+            try
+            {
+                if (ToInt(GetMember(actor, "m_TeamIndex")) == 0)
+                {
+                    return true;
+                }
+
+                return CountDeathArmor(actor) > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
         private static bool ConsumeDeathArmor(object actor)
         {
             try
