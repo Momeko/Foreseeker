@@ -433,7 +433,9 @@ namespace DSH.Foreseeker
                 return;
             }
 
-            hpField.SetValue(actor, Math.Max(0f, current - damage));
+            float next = Math.Max(0f, current - damage);
+            hpField.SetValue(actor, next);
+            SetDeathsDoorStatus(actor, next <= 0f);
         }
 
         /// <summary>Burns one deaths_door_armor stack; false when the actor has none.</summary>
@@ -912,6 +914,21 @@ namespace DSH.Foreseeker
                 field.SetValue(target, value);
             }
         }
+        /// <summary>Mirrors the game: reaching 0 HP sets the deaths-door status bit.</summary>
+        private static void SetDeathsDoorStatus(object actor, bool value)
+        {
+            try
+            {
+                var statuses = GetMember(actor, "m_Statuses") as Array;
+                if (statuses != null && statuses.Length > 0)
+                {
+                    statuses.SetValue(value, 0);
+                }
+            }
+            catch
+            {
+            }
+        }
         internal static void ApplyHealthDelta(object actor, float delta)
         {
             FieldInfo hpField = FindField(actor, "m_Hp");
@@ -921,7 +938,12 @@ namespace DSH.Foreseeker
             }
 
             float current = Convert.ToSingle(hpField.GetValue(actor));
-            hpField.SetValue(actor, Math.Max(0f, current + delta));
+            float next = Math.Max(0f, current + delta);
+            hpField.SetValue(actor, next);
+            if (next > 0f)
+            {
+                SetDeathsDoorStatus(actor, false);
+            }
         }
 
         internal static void ApplyStressDelta(object actor, float delta)
