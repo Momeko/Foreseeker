@@ -1,4 +1,4 @@
-# Build the Foreseeker BepInEx plugin and deploy it into the ORIGINAL game install.
+# Build the Foretest BepInEx plugin (fork: logs on, UI hidden) and deploy it into the ORIGINAL game install.
 # Default target: D:\Software\steamapps\common\Darkest Dungeon(R) II  (discovered by wildcard
 # because the folder name contains a non-ASCII character and this script must stay ASCII-only).
 #
@@ -15,7 +15,7 @@ $game = $gameDir.FullName
 $managed = Join-Path $game 'Darkest Dungeon II_Data\Managed'
 $core    = Join-Path $game 'BepInEx\core'
 $csc     = 'C:\Program Files\dotnet\sdk\10.0.301\Roslyn\bincore\csc.dll'
-$src     = @((Join-Path $PSScriptRoot 'Plugin.cs'), (Join-Path $PSScriptRoot 'SaveReader.cs'), (Join-Path $PSScriptRoot 'RandomTrace.cs'), (Join-Path $PSScriptRoot 'Probe.cs'), (Join-Path $PSScriptRoot 'SolverProbe.cs'), (Join-Path $PSScriptRoot 'ForeseekerHost.cs'), (Join-Path $PSScriptRoot 'Solver.cs'), (Join-Path $PSScriptRoot 'SimState.cs'))
+$src     = @((Join-Path $PSScriptRoot 'Plugin.cs'), (Join-Path $PSScriptRoot 'SaveReader.cs'), (Join-Path $PSScriptRoot 'RandomTrace.cs'), (Join-Path $PSScriptRoot 'Probe.cs'), (Join-Path $PSScriptRoot 'SolverProbe.cs'), (Join-Path $PSScriptRoot 'ForeseekerHost.cs'), (Join-Path $PSScriptRoot 'Solver.cs'), (Join-Path $PSScriptRoot 'SimState.cs'), (Join-Path $PSScriptRoot 'ForetestLog.cs'))
 $outDir  = Join-Path $PSScriptRoot 'bin'
 
 if (-not (Test-Path -LiteralPath $managed)) { throw "managed folder not found: $managed" }
@@ -44,13 +44,13 @@ $deployed = Join-Path $game 'BepInEx\plugins\Foreseeker.dll'
 # If the game is running, the DLL is mapped and cannot be overwritten in place.
 # Renaming the mapped file is allowed on NTFS, so fall back to: move old -> .prev, copy new.
 try {
-    Copy-Item -LiteralPath (Join-Path $outDir 'Foreseeker.dll') -Destination $deployed -Force -ErrorAction Stop
+    Copy-Item -LiteralPath (Join-Path $outDir 'Foretest.dll') -Destination $deployed -Force -ErrorAction Stop
     Write-Host "deployed in place (game not running)."
 } catch {
     $prev = Join-Path $game 'BepInEx\plugins\Foreseeker.dll.prev'
     if (Test-Path -LiteralPath $prev) { Remove-Item -LiteralPath $prev -Force }
     Move-Item -LiteralPath $deployed -Destination $prev -Force
-    Copy-Item -LiteralPath (Join-Path $outDir 'Foreseeker.dll') -Destination $deployed -Force
+    Copy-Item -LiteralPath (Join-Path $outDir 'Foretest.dll') -Destination $deployed -Force
     Write-Host "game was running: old DLL renamed to Foreseeker.dll.prev (restart the game to load the new build)."
 }
 

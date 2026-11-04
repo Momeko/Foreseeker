@@ -24,7 +24,7 @@ namespace DSH.Foreseeker
         private const BindingFlags Any =
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-        internal static bool Visible = true;
+        internal static bool Visible = false;
 
         private static float _nextRefresh;
         private static string _header = "solver: idle";
@@ -139,6 +139,107 @@ namespace DSH.Foreseeker
         /// Combat items are free actions (one per hero, one use), so they are advice on top of the
         /// ranked skills rather than a row competing with them.
         /// </summary>
+        private static int _partyLoggedBattle;
+        private static bool _bossBattle;
+        private static int _debugTick;
+
+        /// <summary>Boss fights carry special tokens/mechanics the sandbox cannot mirror.</summary>
+        internal static bool BossBattle { get { return _bossBattle; } }
+
+        /// <summary>Logs the party's classes and paths once per battle, so a run can be labelled.</summary>
+        private static void LogParty(object battle)
+        {
+            try
+            {
+                int hash = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(battle);
+                if (hash == _partyLoggedBattle)
+                {
+                    return;
+                }
+
+                _partyLoggedBattle = hash;
+
+                Action<string> sink = RandomTrace.Sink;
+                if (sink == null)
+                {
+                    return;
+                }
+
+                foreach (object hero in TeamActors(0))
+                {
+                    string classId = DataId(GetMember(hero, "m_ActorDataClass"));
+                    string pathId = DataId(GetMember(hero, "m_ActorDataPath"));
+                    int position = ToInt(GetMember(hero, "m_TeamPosition")) + 1;
+                    float hp = ToFloat(GetMember(hero, "m_Hp"));
+                    float max = Mathf.Max(1f, Stat(hero, _healthMaxStat, "m_Hp"));
+
+                    sink("S HERO class=" + ActorName(hero)
+                         + "(" + classId + ")"
+                         + " path=" + pathId
+                         + " pos=" + position
+                         + " hp=" + hp.ToString("F0") + "/" + max.ToString("F0"));
+                }
+
+                var bosses = new List<string>();
+                foreach (object enemy in TeamActors(1))
+                {
+                    if (IsBoss(enemy))
+                    {
+                        bosses.Add(ActorName(enemy) + "(" + DataId(GetMember(enemy, "m_ActorDataClass")) + ")");
+                    }
+                }
+
+                _bossBattle = bosses.Count > 0;
+                if (bosses.Count > 0)
+                {
+                    sink("S BATTLE boss=1 bosses=" + string.Join("|", bosses.ToArray()));
+                }
+                else
+                {
+                    sink("S BATTLE boss=0");
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private static readonly HashSet<string> BossTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "boss", "end_boss", "biome_boss", "gang_boss", "cultist_boss", "kingdom_boss"
+        };
+
+        private static bool IsBoss(object actor)
+        {
+            object classData = GetMember(actor, "m_ActorDataClass");
+            var tags = classData == null ? null : GetMember(classData, "m_Tags") as IEnumerable;
+            if (tags == null)
+            {
+                return false;
+            }
+
+            foreach (object tag in tags)
+            {
+                string text = tag as string;
+                if (!string.IsNullOrEmpty(text) && BossTags.Contains(text.Trim()))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        private static string DataId(object container)
+        {
+            if (container == null)
+            {
+                return "?";
+            }
+
+            object id = GetMember(container, "Id");
+            string text = id as string;
+            return string.IsNullOrEmpty(text) ? "?" : text;
+        }
         private static void BuildItemAdvice(object actor)
         {
             try
@@ -331,46 +432,6 @@ namespace DSH.Foreseeker
             }
         }
 
-        private static bool _bossBattle;
-
-        /// <summary>Boss fights carry special tokens/mechanics the sandbox cannot mirror.</summary>
-        internal static bool BossBattle { get { return _bossBattle; } }
-
-        private static readonly HashSet<string> BossTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "boss", "end_boss", "biome_boss", "gang_boss", "cultist_boss", "kingdom_boss"
-        };
-
-        /// <summary>True when any living enemy carries a boss tag.</summary>
-        private static bool DetectBossBattle()
-        {
-            try
-            {
-                foreach (object enemy in TeamActors(1))
-                {
-                    object classData = GetMember(enemy, "m_ActorDataClass");
-                    var tags = classData == null ? null : GetMember(classData, "m_Tags") as IEnumerable;
-                    if (tags == null)
-                    {
-                        continue;
-                    }
-
-                    foreach (object tag in tags)
-                    {
-                        string text = tag as string;
-                        if (!string.IsNullOrEmpty(text) && BossTags.Contains(text.Trim()))
-                        {
-                            return true;
-                        }
-                    }
-                }
-            }
-            catch
-            {
-            }
-
-            return false;
-        }
         private static void Build()
         {
             Rows.Clear();
@@ -386,7 +447,7 @@ namespace DSH.Foreseeker
 
             object teams = GetMember(battle, "m_BattleTeams");
             _teams = teams;
-            _bossBattle = DetectBossBattle();
+            LogParty(battle);
             uint actorGuid = ToUInt(GetMember(battle, "CurrentActorGuid"));
             object actor = actorGuid == 0 ? null : Invoke(teams, "GetActorFromActorGuid", actorGuid);
             if (actor == null)
@@ -543,14 +604,11 @@ namespace DSH.Foreseeker
 
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
             if (!_bossBattle)
-
             {
-
                 ApplyLookahead(actor, ToInt(GetMember(battle, "CurrentRound")),
-
                                ToInt(GetMember(battle, "CurrentTurn")), actorGuid);
-
             }
+
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
 
             string name = ActorName(actor);
@@ -558,6 +616,12 @@ namespace DSH.Foreseeker
                       + " · 第" + ToInt(GetMember(battle, "CurrentRound")) + "回合"
                       + " 第" + (ToInt(GetMember(battle, "CurrentTurn")) + 1) + "手"
                       + " · " + plans + " 个选择 · 评分越高越好" + (_bossBattle ? "（Boss 战不做还手预演）" : string.Empty) + " · 按 F5 关闭";
+
+            ForetestLog.WriteDebug("DECIDE round=" + ToInt(GetMember(battle, "CurrentRound"))
+                                                   + " turn=" + ToInt(GetMember(battle, "CurrentTurn"))
+                                                   + " actor=" + ActorName(actor)
+                                                   + " choices=" + Rows.Count
+                                                   + (_bossBattle ? " boss=1" : string.Empty));
 
             BuildItemAdvice(actor);
             LogDecision(battle, actor, actorGuid, plans);
@@ -698,7 +762,8 @@ namespace DSH.Foreseeker
                 sink("S DECIDE round=" + ToInt(GetMember(battle, "CurrentRound"))
                      + " turn=" + ToInt(GetMember(battle, "CurrentTurn"))
                      + " actor=" + ActorName(actor)
-                     + " choices=" + plans
+                     + " choices=" + Rows.Count
+                     + (_bossBattle ? " boss=1" : string.Empty)
                      + (string.IsNullOrEmpty(_itemLine) ? string.Empty : " item=" + _itemLine));
 
                 for (int i = 0; i < Rows.Count && i < 3; i++)
@@ -1153,7 +1218,22 @@ namespace DSH.Foreseeker
         private static string SkillName(string skillId)
         {
             string name = SaveReader.SkillName(skillId);
-            return string.IsNullOrEmpty(name) ? ShortSkill(skillId) : name;
+            if (!string.IsNullOrEmpty(name))
+            {
+                return name;
+            }
+
+            // Upgraded skills ("_u") usually only have the base name localised.
+            if (skillId != null && skillId.EndsWith("_u", StringComparison.Ordinal))
+            {
+                name = SaveReader.SkillName(skillId.Substring(0, skillId.Length - 2));
+                if (!string.IsNullOrEmpty(name))
+                {
+                    return name + "+";
+                }
+            }
+
+            return ShortSkill(skillId);
         }
 
         private static string ActorName(object actor)
@@ -1939,23 +2019,15 @@ namespace DSH.Foreseeker
                     return 0f;
                 }
 
-                int destination = current;
-
-                bool targetIsAlly = target != null && IsAlly(performer, target) && targetGuid != performerGuid;
-                if (targetIsAlly)
+                // Only a real Move effect changes rank. Every friendly skill targets an ally, so
+                // treating "ally target" as a move gave heals huge phantom position bonuses.
+                int move = MoveEffectsOn(actorResult, performerGuid);
+                if (move == 0)
                 {
-                    destination = ToInt(GetMember(target, "m_TeamPosition"));
-                }
-                else
-                {
-                    int move = MoveEffectsOn(actorResult, performerGuid);
-                    if (move != 0)
-                    {
-                        destination = current + move;
-                    }
+                    return 0f;
                 }
 
-                destination = Mathf.Clamp(destination, 0, 3);
+                int destination = Mathf.Clamp(current + move, 0, 3);
                 if (destination == current)
                 {
                     return 0f;
@@ -2311,6 +2383,7 @@ namespace DSH.Foreseeker
                     return 0.7f;
                 case "block_plus":
                     return 1.1f;
+                case "combo":
                 case "strength":
                 case "crit":
                     return 1.0f;
@@ -2622,6 +2695,7 @@ namespace DSH.Foreseeker
                     catch (Exception ex)
                     {
                         _header = "求解器前瞻出错：" + ex.GetType().Name;
+                            ForetestLog.WriteDebug("LOOKAHEAD-ERR " + ex.GetType().Name + ": " + ex.Message);
                     }
                     finally
                     {
@@ -2643,12 +2717,16 @@ namespace DSH.Foreseeker
                 }
 
                 float spent = (Time.realtimeSinceStartup - start) * 1000f;
-                if (spent > 120f)
+                if (spent > 60f || _debugTick++ % 10 == 0)
                 {
-                    Action<string> sink = RandomTrace.Sink;
-                    if (sink != null)
+                    ForetestLog.WriteDebug("LOOKAHEAD ms=" + spent.ToString("0"));
+                    if (spent > 60f)
                     {
-                        sink("S solver lookahead took " + spent.ToString("F0") + "ms");
+                        Action<string> sink = RandomTrace.Sink;
+                        if (sink != null)
+                        {
+                            sink("S solver lookahead took " + spent.ToString("F0") + "ms");
+                        }
                     }
                 }
             }
