@@ -449,6 +449,8 @@ namespace DSH.Foreseeker
                 }
             }
 
+            AddPassSkillRows(actor);
+
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
             ApplyLookahead(actor, ToInt(GetMember(battle, "CurrentRound")),
                            ToInt(GetMember(battle, "CurrentTurn")), actorGuid);
@@ -467,6 +469,115 @@ namespace DSH.Foreseeker
         private static string _logKey;
 
         /// <summary>Logs the ranked choices once per decision point, for later comparison.</summary>
+        private static readonly string[] PassSkillIds = { "pass_heal", "pass_stress" };
+
+        /// <summary>
+        /// The always-equipped pass skills are part of every hero's kit: "pass" (self, +2 stress)
+        /// is always legal, and pass_heal unlocks below 25% HP (heal 20% + 2 stress, cooldown 3).
+        /// The controller may hide them, so add the legal ones explicitly.
+        /// </summary>
+        private static void AddPassSkillRows(object actor)
+        {
+            try
+            {
+                object battle = SimState.Battle;
+                if (battle == null)
+                {
+                    return;
+                }
+
+                object teams = GetMember(battle, "m_BattleTeams");
+                object turnOrder = GetMember(battle, "m_BattleTurnOrder");
+                object tracking = GetMember(battle, "m_BattleTracking");
+                if (teams == null || turnOrder == null)
+                {
+                    return;
+                }
+
+                if (_addPotentialMethod == null)
+                {
+                    _addPotentialMethod = FindAddPotentialMethod();
+                }
+
+                if (_addPotentialMethod == null)
+                {
+                    return;
+                }
+
+                uint selfGuid = ToUInt(GetMember(actor, "m_ActorGuid"));
+                float maxHp = Mathf.Max(1f, Stat(actor, _healthMaxStat, "m_Hp"));
+                float hp = ToFloat(GetMember(actor, "m_Hp"));
+                float ratio = float.IsNaN(hp) ? 1f : hp / maxHp;
+                Dictionary<string, int> cooling = CoolingMap(actor);
+
+                foreach (string id in PassSkillIds)
+                {
+                    bool already = false;
+                    for (int i = 0; i < Rows.Count; i++)
+                    {
+                        if (Rows[i].SkillId == id)
+                        {
+                            already = true;
+                            break;
+                        }
+                    }
+
+                    if (already)
+                    {
+                        continue;
+                    }
+
+                    if (id == "pass_heal" && ratio >= 0.25f)
+                    {
+                        continue;
+                    }
+
+                    int remaining;
+                    if (id == "pass_heal" && cooling.TryGetValue(id, out remaining) && remaining > 0)
+                    {
+                        continue;
+                    }
+
+                    object temp = Activator.CreateInstance(typeof(SkillCalculation), teams, turnOrder, tracking);
+                    object input = new SkillCalculation.Input(selfGuid, id, selfGuid);
+                    _addPotentialMethod.Invoke(temp, new object[] { input, new List<uint> { selfGuid } });
+
+                    IDictionary results = GetMember(temp, "m_PotentialResults") as IDictionary;
+                    if (results == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (DictionaryEntry pair in results)
+                    {
+                        var actorResults = GetMember(pair.Value, "ActorResults") as IEnumerable;
+                        if (actorResults == null)
+                        {
+                            continue;
+                        }
+
+                        foreach (object actorResult in actorResults)
+                        {
+                            if (ToUInt(GetMember(actorResult, "m_TargetActorGuid")) != selfGuid)
+                            {
+                                continue;
+                            }
+
+                            float damage = ToFloat(GetMember(actorResult, "HealthDamage"));
+                            if (float.IsNaN(damage))
+                            {
+                                damage = 0f;
+                            }
+
+                            Rows.Add(Score(actor, actor, id, selfGuid, damage, false, true, actorResult));
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
         private static void LogDecision(object battle, object actor, uint actorGuid, int plans)
         {
             try
