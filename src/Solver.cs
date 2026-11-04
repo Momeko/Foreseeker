@@ -52,6 +52,12 @@ namespace DSH.Foreseeker
             public object ActorResult;
             public List<Row> Parts;
             public string TargetName;
+            public float TermDamage;
+            public float TermKill;
+            public float TermHp;
+            public float TermEffect;
+            public float TermPos;
+            public float TermRetal;
         }
 
         internal static void Refresh()
@@ -881,6 +887,21 @@ namespace DSH.Foreseeker
                     Row row = Rows[i];
                     sink("S TOP" + (i + 1) + " " + row.Label + " [" + row.Score.ToString("F1") + "]");
                 }
+
+                // Feature vectors let the weights be fitted offline from these logs.
+                for (int i = 0; i < Rows.Count && i < 12; i++)
+                {
+                    Row row = Rows[i];
+                    sink("S FEAT " + row.SkillId + "|" + row.TargetGuid
+                         + "|rank=" + (i + 1)
+                         + "|dmg=" + row.Damage.ToString("0.#")
+                         + "|hp=" + row.TermHp.ToString("0.0")
+                         + "|kill=" + row.TermKill.ToString("0.0")
+                         + "|eff=" + row.TermEffect.ToString("0.0")
+                         + "|pos=" + row.TermPos.ToString("0.0")
+                         + "|retal=" + row.TermRetal.ToString("0.0")
+                         + "|score=" + row.Score.ToString("0.0"));
+                }
             }
             catch
             {
@@ -1057,7 +1078,11 @@ namespace DSH.Foreseeker
                 TargetGuid = targetGuid,
                 Damage = damage,
                 ActorResult = actorResult,
-                TargetName = ActorName(target)
+                TargetName = ActorName(target),
+                TermHp = sign * HpLossCost(target, damage),
+                TermKill = trueKill ? (targetIsAlly ? -1000f : 30f) : 0f,
+                TermEffect = EffectValue(performer, actorResult, out effects),
+                TermPos = positionDelta * 0.7f
             };
         }
 
