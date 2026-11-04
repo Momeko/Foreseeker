@@ -620,7 +620,7 @@ namespace DSH.Foreseeker
             ForetestLog.WriteDebug("DECIDE round=" + ToInt(GetMember(battle, "CurrentRound"))
                                                    + " turn=" + ToInt(GetMember(battle, "CurrentTurn"))
                                                    + " actor=" + ActorName(actor)
-                                                   + " choices=" + plans
+                                                   + " choices=" + Rows.Count
                                                    + (_bossBattle ? " boss=1" : string.Empty));
 
             BuildItemAdvice(actor);
@@ -762,7 +762,7 @@ namespace DSH.Foreseeker
                 sink("S DECIDE round=" + ToInt(GetMember(battle, "CurrentRound"))
                      + " turn=" + ToInt(GetMember(battle, "CurrentTurn"))
                      + " actor=" + ActorName(actor)
-                     + " choices=" + plans
+                     + " choices=" + Rows.Count
                      + (_bossBattle ? " boss=1" : string.Empty)
                      + (string.IsNullOrEmpty(_itemLine) ? string.Empty : " item=" + _itemLine));
 
@@ -1218,7 +1218,22 @@ namespace DSH.Foreseeker
         private static string SkillName(string skillId)
         {
             string name = SaveReader.SkillName(skillId);
-            return string.IsNullOrEmpty(name) ? ShortSkill(skillId) : name;
+            if (!string.IsNullOrEmpty(name))
+            {
+                return name;
+            }
+
+            // Upgraded skills ("_u") usually only have the base name localised.
+            if (skillId != null && skillId.EndsWith("_u", StringComparison.Ordinal))
+            {
+                name = SaveReader.SkillName(skillId.Substring(0, skillId.Length - 2));
+                if (!string.IsNullOrEmpty(name))
+                {
+                    return name + "+";
+                }
+            }
+
+            return ShortSkill(skillId);
         }
 
         private static string ActorName(object actor)
@@ -2004,23 +2019,15 @@ namespace DSH.Foreseeker
                     return 0f;
                 }
 
-                int destination = current;
-
-                bool targetIsAlly = target != null && IsAlly(performer, target) && targetGuid != performerGuid;
-                if (targetIsAlly)
+                // Only a real Move effect changes rank. Every friendly skill targets an ally, so
+                // treating "ally target" as a move gave heals huge phantom position bonuses.
+                int move = MoveEffectsOn(actorResult, performerGuid);
+                if (move == 0)
                 {
-                    destination = ToInt(GetMember(target, "m_TeamPosition"));
-                }
-                else
-                {
-                    int move = MoveEffectsOn(actorResult, performerGuid);
-                    if (move != 0)
-                    {
-                        destination = current + move;
-                    }
+                    return 0f;
                 }
 
-                destination = Mathf.Clamp(destination, 0, 3);
+                int destination = Mathf.Clamp(current + move, 0, 3);
                 if (destination == current)
                 {
                     return 0f;
@@ -2376,6 +2383,7 @@ namespace DSH.Foreseeker
                     return 0.7f;
                 case "block_plus":
                     return 1.1f;
+                case "combo":
                 case "strength":
                 case "crit":
                     return 1.0f;
