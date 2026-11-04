@@ -213,6 +213,27 @@ namespace DSH.Foreseeker
         // ---------------------------------------------------------------- verification
 
         /// <summary>Reads the LIVE objects and reports fields/lists that differ from the snapshot.</summary>
+        /// <summary>
+        /// Compares the live state against the snapshot. Used after a rollback to catch leaks:
+        /// anything still different means the sandbox changed the real battle.
+        /// </summary>
+        internal static string LeakReport(int max)
+        {
+            List<string> problems = Mismatches();
+            if (problems.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var builder = new System.Text.StringBuilder();
+            builder.Append("count=").Append(problems.Count);
+            for (int i = 0; i < problems.Count && i < max; i++)
+            {
+                builder.Append(' ').Append(problems[i]);
+            }
+
+            return builder.ToString();
+        }
         internal static List<string> Mismatches()
         {
             var problems = new List<string>();
