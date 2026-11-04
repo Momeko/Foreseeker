@@ -583,6 +583,54 @@ namespace DSH.Foreseeker
                 return false;
             }
         }
+        /// <summary>First living actor on the opposite team that currently holds a taunt token.</summary>
+        private static uint FindTaunterGuid(object battle, object enemy)
+        {
+            try
+            {
+                object teams = GetMember(battle, "m_BattleTeams");
+                int enemyTeam = ToInt(GetMember(enemy, "m_TeamIndex"));
+                var teamList = GetMember(teams, "m_Teams") as IEnumerable;
+                if (teamList == null)
+                {
+                    return 0;
+                }
+
+                foreach (object team in teamList)
+                {
+                    if (team == null || ToInt(GetMember(team, "m_TeamIndex")) == enemyTeam)
+                    {
+                        continue;
+                    }
+
+                    var actors = GetMember(team, "m_Actors") as IEnumerable;
+                    if (actors == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (object actor in actors)
+                    {
+                        object livingFlag = actor == null ? null : GetMember(actor, "m_IsLiving");
+                        if (actor == null || (livingFlag is bool && !(bool)livingFlag))
+                        {
+                            continue;
+                        }
+
+                        if (HasTokenId(actor, "taunt"))
+                        {
+                            return ToUInt(GetMember(actor, "m_ActorGuid"));
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return 0;
+        }
+
         private static int CountDeathArmor(object actor)
         {
             try
@@ -1275,6 +1323,15 @@ namespace DSH.Foreseeker
             }
 
             PeekNextEnemy(battle, guid);
+            PeekNextEnemy(battle, guid);
+
+            // Taunt forces the hit onto the taunting actor; the skill precompute only enumerates
+            // valid targets, so apply the forced-target rule here.
+            uint taunter = FindTaunterGuid(battle, enemy);
+            if (taunter != 0)
+            {
+                _lastPredVictim = taunter;
+            }
             return _lastPredDamage;
         }
 
