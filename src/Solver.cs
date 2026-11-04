@@ -796,9 +796,9 @@ namespace DSH.Foreseeker
             bool atDeathsDoor = IsAtDeathsDoor(target);
             bool lethalHit = after <= 0f && damage > 0f;
             int deathArmor = TokenStacks(target, "deaths_door_armor");
-            bool trueKill = false;
+            bool trueKill = actorResult != null && ToBool(GetMember(actorResult, "IsKill"));
 
-            if (lethalHit)
+            if (!trueKill && lethalHit)
             {
                 if (atDeathsDoor && deathArmor > 0)
                 {
@@ -807,7 +807,7 @@ namespace DSH.Foreseeker
                 }
                 else if (atDeathsDoor)
                 {
-                    trueKill = true;
+                    // survived the deathblow check
                 }
                 else
                 {
