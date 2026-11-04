@@ -1490,6 +1490,19 @@ namespace DSH.Foreseeker
                     if (!string.IsNullOrEmpty(tokenId))
                     {
                         int amount = Math.Max(1, ToInt(GetMember(instance, "TokenAddAmount")));
+
+                        // Stack caps: a token beyond m_Limit is wasted, so only value the room left.
+                        int limit = TokenLimit(tokenId);
+                        if (limit > 0)
+                        {
+                            int existing = TokenStacks(holder, tokenId);
+                            amount = Mathf.Min(amount, Mathf.Max(0, limit - existing));
+                            if (amount <= 0)
+                            {
+                                continue;
+                            }
+                        }
+
                         int polarity = TokenPolarity(tokenId);
                         float weight = TokenWeight(tokenId);
 
@@ -1711,6 +1724,31 @@ namespace DSH.Foreseeker
         }
 
         /// <summary>How many stacks of a token the actor currently holds.</summary>
+        /// <summary>Stack cap from the token definition (m_Limit); 0 means unlimited.</summary>
+        private static int TokenLimit(string tokenId)
+        {
+            if (string.IsNullOrEmpty(tokenId))
+            {
+                return 0;
+            }
+
+            try
+            {
+                object library = SingletonMonoBehaviour<Library<string, TokenDefinition>>.Instance;
+                object definition = Invoke(library, "GetLibraryElement", tokenId);
+                if (definition == null)
+                {
+                    return 0;
+                }
+
+                int limit = ToInt(GetMember(definition, "m_Limit"));
+                return limit < 0 ? 0 : limit;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
         private static int TokenStacks(object actor, string tokenId)
         {
             if (actor == null || string.IsNullOrEmpty(tokenId))
