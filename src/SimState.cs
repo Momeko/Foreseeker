@@ -575,46 +575,31 @@ namespace DSH.Foreseeker
                     return false;
                 }
 
-                int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
-                for (int i = 0; i < count; i++)
-                {
-                    object instance = Invoke(container, "GetInstanceAtIndex", i);
-                    object definition = instance == null ? null : GetMember(instance, "TokenDefinition");
-                    string id = definition == null ? null : GetMember(definition, "Id") as string;
-                    if (id == tokenId)
-                    {
-                        return true;
-                    }
-                }
+                object counted = Invoke(container, "GetNumberOfTokensWithId", tokenId, false);
+                return counted != null && ToInt(counted) > 0;
             }
             catch
             {
+                return false;
             }
-
-            return false;
         }
         private static int CountDeathArmor(object actor)
         {
-            int total = 0;
-            object container = GetMember(actor, "m_TokenContainer");
-            if (container == null)
+            try
+            {
+                object container = GetMember(actor, "m_TokenContainer");
+                if (container == null)
+                {
+                    return 0;
+                }
+
+                object counted = Invoke(container, "GetNumberOfTokensWithId", "deaths_door_armor", false);
+                return counted == null ? 0 : ToInt(counted);
+            }
+            catch
             {
                 return 0;
             }
-
-            int count = ToInt(Invoke(container, "GetNumberOfInstances", null));
-            for (int i = 0; i < count; i++)
-            {
-                object instance = Invoke(container, "GetInstanceAtIndex", i);
-                object definition = instance == null ? null : GetMember(instance, "TokenDefinition");
-                string id = definition == null ? null : GetMember(definition, "Id") as string;
-                if (id == "deaths_door_armor")
-                {
-                    total++;
-                }
-            }
-
-            return total;
         }
 
         private static object _tokenLibrary;
