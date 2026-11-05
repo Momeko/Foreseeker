@@ -260,6 +260,7 @@ namespace DSH.Foreseeker
                 uint performer;
                 uint.TryParse(Field(result, "m_PerformerActorGuid"), out performer);
                 Solver.LogActual(skillId, performer);
+                Solver.OnActionFinalized();
             }
             catch
             {

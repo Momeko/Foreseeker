@@ -146,6 +146,29 @@ namespace DSH.Foreseeker
         /// ranked skills rather than a row competing with them.
         /// </summary>
         private static int _partyLoggedBattle;
+        /// <summary>
+        /// Hero paths excluded from the generic dataset: their mechanics are still being learned,
+        /// so decisions involving them must not pollute the calibration data.
+        /// </summary>
+        private static readonly HashSet<string> ExcludedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "abm_fiend", "abm_moribund", "abm_unchained",
+            "run_orphan", "run_arsonist",
+            "occ_aspirant", "occ_ritualist", "occ_warlock",
+            "lep_monarch",
+            "jes_soloist", "jes_virtuoso"
+        };
+
+        private static bool _excludedParty;
+
+        /// <summary>Clears the per-decision caches: a free action does not advance the turn counter.</summary>
+        internal static void OnActionFinalized()
+        {
+            _logKey = null;
+            _itemAdviceKey = null;
+            _lookaheadNext = 0f;
+            _lookaheadPenalties.Clear();
+        }
         private static bool _bossBattle;
         private static int _debugTick;
 
@@ -195,14 +218,26 @@ namespace DSH.Foreseeker
                     }
                 }
 
+                _excludedParty = false;
+                foreach (object hero in TeamActors(0))
+                {
+                    string heroPath = DataId(GetMember(hero, "m_ActorDataPath"));
+                    if (!string.IsNullOrEmpty(heroPath) && ExcludedPaths.Contains(heroPath))
+                    {
+                        _excludedParty = true;
+                        break;
+                    }
+                }
+
                 _bossBattle = bosses.Count > 0;
+                string excludedText = _excludedParty ? " excluded=1" : string.Empty;
                 if (bosses.Count > 0)
                 {
-                    sink("S BATTLE boss=1 bosses=" + string.Join("|", bosses.ToArray()));
+                    sink("S BATTLE boss=1 bosses=" + string.Join("|", bosses.ToArray()) + excludedText);
                 }
                 else
                 {
-                    sink("S BATTLE boss=0");
+                    sink("S BATTLE boss=0" + excludedText);
                 }
             }
             catch
@@ -889,7 +924,7 @@ namespace DSH.Foreseeker
                 }
 
                 // Feature vectors let the weights be fitted offline from these logs.
-                for (int i = 0; i < Rows.Count && i < 12; i++)
+                for (int i = 0; i < Rows.Count && i < 12 && !_excludedParty; i++)
                 {
                     Row row = Rows[i];
                     sink("S FEAT " + row.SkillId + "|" + row.TargetGuid
