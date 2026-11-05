@@ -152,9 +152,9 @@ namespace DSH.Foreseeker
         /// </summary>
         private static readonly HashSet<string> ExcludedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "abm_fiend", "abm_moribund", "abm_unchained",
-            "run_orphan", "run_arsonist",
-            "occ_aspirant", "occ_ritualist", "occ_warlock",
+            "abm_fiend", "abm_moribund", "abm_unchained", "abm_wander", "abm_wanderer",
+            "run_orphan", "run_arsonist", "ves_chaplain", "ves_seraph",
+            "occ_aspirant", "occ_ritualist", "occ_warlock", "occ_wander", "occ_wanderer",
             "lep_monarch",
             "jes_soloist", "jes_virtuoso"
         };
@@ -915,6 +915,7 @@ namespace DSH.Foreseeker
                      + " actor=" + ActorName(actor)
                      + " choices=" + Rows.Count
                      + (_bossBattle ? " boss=1" : string.Empty)
+                     + (_excludedParty ? " excluded=1" : string.Empty)
                      + (string.IsNullOrEmpty(_itemLine) ? string.Empty : " item=" + _itemLine));
 
                 for (int i = 0; i < Rows.Count && i < 3; i++)
@@ -924,9 +925,10 @@ namespace DSH.Foreseeker
                 }
 
                 // Feature vectors let the weights be fitted offline from these logs.
-                for (int i = 0; i < Rows.Count && i < 12 && !_excludedParty; i++)
+                for (int i = 0; i < Rows.Count && i < 12; i++)
                 {
                     Row row = Rows[i];
+                    sink("S FEAT " + row.SkillId + "|" + row.TargetGuid
                     sink("S FEAT " + row.SkillId + "|" + row.TargetGuid
                          + "|rank=" + (i + 1)
                          + "|dmg=" + row.Damage.ToString("0.#")
@@ -935,8 +937,8 @@ namespace DSH.Foreseeker
                          + "|eff=" + row.TermEffect.ToString("0.0")
                          + "|pos=" + row.TermPos.ToString("0.0")
                          + "|retal=" + row.TermRetal.ToString("0.0")
-                         + "|score=" + row.Score.ToString("0.0"));
-                }
+                         + "|score=" + row.Score.ToString("0.0")
+                         + (_excludedParty ? "|excluded=1" : string.Empty));
             }
             catch
             {
