@@ -155,11 +155,17 @@ namespace DSH.Foreseeker
             "abm_fiend", "abm_moribund", "abm_unchained", "abm_wanderer",
             "run_orphan", "run_arsonist", "ves_chaplain", "ves_seraph",
             "occ_aspirant", "occ_ritualist", "occ_warlock", "occ_wanderer",
-            "lep_monarch",
             "jes_soloist", "jes_virtuoso"
         };
 
-        private static bool _excludedParty;
+        private static bool _battleExcluded;
+        private static readonly List<uint> _excludedActorGuids = new List<uint>();
+
+        /// <summary>Paths that poison the whole battle, not just their own decisions.</summary>
+        private static readonly HashSet<string> BattleExcludedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "lep_monarch"
+        };
 
         /// <summary>Clears the per-decision caches: a free action does not advance the turn counter.</summary>
         internal static void OnActionFinalized()
@@ -218,19 +224,27 @@ namespace DSH.Foreseeker
                     }
                 }
 
-                _excludedParty = false;
+                _battleExcluded = false;
+                _excludedActorGuids.Clear();
                 foreach (object hero in TeamActors(0))
                 {
                     string heroPath = DataId(GetMember(hero, "m_ActorDataPath"));
-                    if (!string.IsNullOrEmpty(heroPath) && ExcludedPaths.Contains(heroPath))
+                    if (string.IsNullOrEmpty(heroPath))
                     {
-                        _excludedParty = true;
-                        break;
+                        continue;
+                    }
+
+                    if (BattleExcludedPaths.Contains(heroPath))
+                    {
+                        _battleExcluded = true;
+                    }
+                    else if (ExcludedPaths.Contains(heroPath))
+                    {
+                        _excludedActorGuids.Add(ToUInt(GetMember(hero, "m_ActorGuid")));
                     }
                 }
-
                 _bossBattle = bosses.Count > 0;
-                string excludedText = _excludedParty ? " excluded=1" : string.Empty;
+                string excludedText = _battleExcluded ? " excluded=1" : string.Empty;
                 if (bosses.Count > 0)
                 {
                     sink("S BATTLE boss=1 bosses=" + string.Join("|", bosses.ToArray()) + excludedText);
@@ -915,7 +929,7 @@ namespace DSH.Foreseeker
                      + " actor=" + ActorName(actor)
                      + " choices=" + Rows.Count
                      + (_bossBattle ? " boss=1" : string.Empty)
-                     + (_excludedParty ? " excluded=1" : string.Empty)
+                     + ((_battleExcluded || _excludedActorGuids.Contains(actorGuid)) ? " excluded=1" : string.Empty)
                      + (string.IsNullOrEmpty(_itemLine) ? string.Empty : " item=" + _itemLine));
 
                 for (int i = 0; i < Rows.Count && i < 3; i++)
@@ -937,7 +951,7 @@ namespace DSH.Foreseeker
                          + "|pos=" + row.TermPos.ToString("0.0")
                          + "|retal=" + row.TermRetal.ToString("0.0")
                          + "|score=" + row.Score.ToString("0.0")
-                         + (_excludedParty ? "|excluded=1" : string.Empty));
+                         + ((_battleExcluded || _excludedActorGuids.Contains(actorGuid)) ? "|excluded=1" : string.Empty));
                 }
             }
             catch
