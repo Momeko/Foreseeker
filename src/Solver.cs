@@ -152,9 +152,9 @@ namespace DSH.Foreseeker
         /// </summary>
         private static readonly HashSet<string> ExcludedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "abm_fiend", "abm_moribund", "abm_unchained", "abm_wander", "abm_wanderer",
+            "abm_fiend", "abm_moribund", "abm_unchained", "abm_wanderer",
             "run_orphan", "run_arsonist", "ves_chaplain", "ves_seraph",
-            "occ_aspirant", "occ_ritualist", "occ_warlock", "occ_wander", "occ_wanderer",
+            "occ_aspirant", "occ_ritualist", "occ_warlock", "occ_wanderer",
             "lep_monarch",
             "jes_soloist", "jes_virtuoso"
         };
