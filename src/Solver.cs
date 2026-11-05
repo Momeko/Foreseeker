@@ -181,7 +181,7 @@ namespace DSH.Foreseeker
 
                     sink("S HERO class=" + ActorName(hero)
                          + "(" + classId + ")"
-                         + " path=" + pathId
+                         + " path=" + (SaveReader.PathName(pathId) ?? pathId) + "(" + pathId + ")"
                          + " pos=" + position
                          + " hp=" + hp.ToString("F0") + "/" + max.ToString("F0"));
                 }
