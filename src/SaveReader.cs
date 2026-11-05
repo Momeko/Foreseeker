@@ -114,6 +114,7 @@ namespace DSH.Foreseeker
         // Token id -> localized display name (zh_CN.po / tw_CN.po, else the English source).
         private static readonly Dictionary<string, string> TokenNameById = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly Dictionary<string, string> SkillNameById = new Dictionary<string, string>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, string> PathNameById = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly Dictionary<string, bool> VisibleBuffById = new Dictionary<string, bool>(StringComparer.Ordinal);
 
         private static string _catalogExcelDir;
@@ -337,17 +338,48 @@ namespace DSH.Foreseeker
             string poDir = Path.Combine(streamingAssets, "Localization", "Poedit");
             foreach (string language in new[] { "zh_CN.po", "tw_CN.po" })
             {
-                string poPath = Path.Combine(poDir, language);
-                if (File.Exists(poPath) && ParsePoTokenNames(poPath))
+                foreach (string poPath in LocalizedPoFiles(poDir, language))
                 {
-                    return;
+                    ParsePoTokenNames(poPath);
                 }
             }
 
-            string sourcePath = Path.Combine(streamingAssets, "Localization", "Sources", "tokens.txt");
-            if (File.Exists(sourcePath))
+            if (TokenNameById.Count == 0)
             {
-                ParseTokenSourceNames(sourcePath);
+                string sourcePath = Path.Combine(streamingAssets, "Localization", "Sources", "tokens.txt");
+                if (File.Exists(sourcePath))
+                {
+                    ParseTokenSourceNames(sourcePath);
+                }
+            }
+        }
+
+        /// <summary>Base po plus the DLC folders (each DLC ships its own zh_CN.po).</summary>
+        private static IEnumerable<string> LocalizedPoFiles(string poDir, string fileName)
+        {
+            string basePath = Path.Combine(poDir, fileName);
+            if (File.Exists(basePath))
+            {
+                yield return basePath;
+            }
+
+            string[] subDirs;
+            try
+            {
+                subDirs = Directory.GetDirectories(poDir);
+            }
+            catch
+            {
+                yield break;
+            }
+
+            foreach (string subDir in subDirs)
+            {
+                string path = Path.Combine(subDir, fileName);
+                if (File.Exists(path))
+                {
+                    yield return path;
+                }
             }
         }
 
@@ -397,6 +429,15 @@ namespace DSH.Foreseeker
                             if (id.Length > 0 && name.Length > 0)
                             {
                                 SkillNameById[id] = name;
+                            }
+                        }
+                        else if (pendingKey.StartsWith("hero_path_name_", StringComparison.Ordinal))
+                        {
+                            string id = pendingKey.Substring("hero_path_name_".Length);
+                            string name = CleanLocalized(Unquote(line, 8));
+                            if (id.Length > 0 && name.Length > 0 && !PathNameById.ContainsKey(id))
+                            {
+                                PathNameById[id] = name;
                             }
                         }
 
@@ -528,6 +569,18 @@ namespace DSH.Foreseeker
         public static string DescribeTokenApplication(string tokenId)
         {
             return string.IsNullOrEmpty(tokenId) ? null : TokenDisplayName(tokenId);
+        }
+
+        /// <summary>Localized name for a hero path id (e.g. cru_banneret → 方旗骑士).</summary>
+        public static string PathName(string pathId)
+        {
+            if (string.IsNullOrEmpty(pathId))
+            {
+                return null;
+            }
+
+            string name;
+            return PathNameById.TryGetValue(pathId, out name) && !string.IsNullOrEmpty(name) ? name : null;
         }
 
         /// <summary>Localized display name for a token id (Chinese when zh_CN.po is present).</summary>
