@@ -929,7 +929,6 @@ namespace DSH.Foreseeker
                 {
                     Row row = Rows[i];
                     sink("S FEAT " + row.SkillId + "|" + row.TargetGuid
-                    sink("S FEAT " + row.SkillId + "|" + row.TargetGuid
                          + "|rank=" + (i + 1)
                          + "|dmg=" + row.Damage.ToString("0.#")
                          + "|hp=" + row.TermHp.ToString("0.0")
@@ -939,6 +938,7 @@ namespace DSH.Foreseeker
                          + "|retal=" + row.TermRetal.ToString("0.0")
                          + "|score=" + row.Score.ToString("0.0")
                          + (_excludedParty ? "|excluded=1" : string.Empty));
+                }
             }
             catch
             {
