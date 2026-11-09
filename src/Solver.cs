@@ -908,13 +908,16 @@ namespace DSH.Foreseeker
         {
             try
             {
-                string key = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(battle) + ":"
-                             + ToInt(GetMember(battle, "CurrentRound")) + ":"
-                             + ToInt(GetMember(battle, "CurrentTurn")) + ":" + actorGuid;
-                if (key == _logKey)
+                // A one-row list means the precompute was not ready yet: wait for the real set
+                // instead of logging a decision that only contains "pass".
+                if (Rows.Count <= 1)
                 {
                     return;
                 }
+
+                string key = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(battle) + ":"
+                             + ToInt(GetMember(battle, "CurrentRound")) + ":"
+                             + ToInt(GetMember(battle, "CurrentTurn")) + ":" + actorGuid;
 
                 _logKey = key;
 
