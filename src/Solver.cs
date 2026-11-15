@@ -915,9 +915,13 @@ namespace DSH.Foreseeker
                     return;
                 }
 
+                // Content key: the same turn may legitimately be logged again after a free action,
+                // but an unchanged candidate set must not repeat on every refresh.
                 string key = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(battle) + ":"
                              + ToInt(GetMember(battle, "CurrentRound")) + ":"
-                             + ToInt(GetMember(battle, "CurrentTurn")) + ":" + actorGuid;
+                             + ToInt(GetMember(battle, "CurrentTurn")) + ":" + actorGuid
+                             + ":" + Rows.Count
+                             + ":" + (Rows.Count > 0 ? Rows[0].SkillId + "@" + Rows[0].TargetGuid : "-");
 
                 _logKey = key;
 
