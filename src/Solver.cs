@@ -634,6 +634,15 @@ namespace DSH.Foreseeker
                         }
                     }
 
+                    float sumHp = 0f, sumKill = 0f, sumEff = 0f, sumPos = 0f;
+                    for (int t = 0; t < targetRows.Count; t++)
+                    {
+                        sumHp += targetRows[t].TermHp;
+                        sumKill += targetRows[t].TermKill;
+                        sumEff += targetRows[t].TermEffect;
+                        sumPos += targetRows[t].TermPos;
+                    }
+
                     Rows.Add(new Row
                     {
                         Label = SkillName(skillId) + " → 敌方全体（" + targetRows.Count + " 目标）"
@@ -646,7 +655,11 @@ namespace DSH.Foreseeker
                         TargetGuid = 0,
                         Damage = 0f,
                         ActorResult = null,
-                        Parts = targetRows
+                        Parts = targetRows,
+                        TermHp = sumHp,
+                        TermKill = sumKill,
+                        TermEffect = sumEff,
+                        TermPos = sumPos
                     });
                 }
                 else
