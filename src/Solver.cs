@@ -178,7 +178,7 @@ namespace DSH.Foreseeker
         /// <summary>Bosses whose fight is simple enough for the sandbox to mirror (no phase tokens).</summary>
         private static readonly HashSet<string> LookaheadAllowedBosses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "shared_shambler", "shared_collector"
+            "shared_shambler", "shared_collector", "shared_pillager_antiquarian"
         };
 
         private static readonly List<string> _bossClassIds = new List<string>();
