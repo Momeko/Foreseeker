@@ -1793,9 +1793,20 @@ namespace DSH.Foreseeker
                             }
                         }
 
+                        if (IsResourceToken(tokenId))
+                        {
+                            continue; // payoff is in the skill that consumes it
+                        }
+
+                        float penaltyValue = ResourceTokenValue(tokenId);
+                        if (penaltyValue < 0f)
+                        {
+                            total -= holderSign * penaltyValue * amount;
+                            continue;
+                        }
+
                         int polarity = TokenPolarity(tokenId);
                         float weight = TokenWeight(tokenId);
-
                         // strength / crit / vulnerable are valued together in the multiplicative
                         // pass above; counting them again here would double-dip.
                         if (tokenId == "strength" || tokenId == "crit" || tokenId == "vulnerable")
@@ -2639,6 +2650,29 @@ namespace DSH.Foreseeker
         }
 
         /// <summary>Relative worth of one stack of a token, in "hit points of a 13 HP enemy" units.</summary>
+        /// <summary>
+        /// Hero-specific tokens fall into two families:
+        ///  - pure resources (conviction, unchecked power): worth nothing on their own, the payoff
+        ///    lives in the skill that consumes them;
+        ///  - stat penalties (winded: -2 damage, -2 speed): worth roughly the hit they cost.
+        /// </summary>
+        private static bool IsResourceToken(string tokenId)
+        {
+            return tokenId.StartsWith("conviction", StringComparison.Ordinal)
+                   || tokenId.StartsWith("unchecked_power", StringComparison.Ordinal);
+        }
+
+        private static float ResourceTokenValue(string tokenId)
+        {
+            if (tokenId.StartsWith("winded", StringComparison.Ordinal)
+                || string.Equals(tokenId, "hellion_winded", StringComparison.Ordinal))
+            {
+                // -2 health damage and -2 speed: about one point of value per stack.
+                return -1f;
+            }
+
+            return 0f;
+        }
         private static float TokenWeight(string tokenId)
         {
             switch (tokenId)
