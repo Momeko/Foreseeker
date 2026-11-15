@@ -41,8 +41,8 @@ namespace DSH.Foreseeker
     [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
     public class ForeseekerPlugin : BaseUnityPlugin
     {
-        public const string PluginGuid = "com.momeko.dd2.foreseeker";
-        public const string PluginName = "Foreseeker";
+        public const string PluginGuid = "com.momeko.dd2.foretest";
+        public const string PluginName = "Foretest";
         public const string PluginVersion = "0.1.0";
 
         private const int WindowId = 987321;
@@ -63,7 +63,7 @@ namespace DSH.Foreseeker
         private const int TitleFontSize = 20;  // round(13 * 1.5)
         private const int LabelFontSize = 21;  // round(14 * 1.5)
 
-        private const string IniFileName = "Foreseeker.ini";
+        private const string IniFileName = "Foretest.ini";
 
         private const string DefaultIni =
             "; ============================================================\r\n" +
@@ -998,14 +998,24 @@ namespace DSH.Foreseeker
                 {
                     return;
                 }
-
                 MethodInfo calculate = FindMethod(controller.GetType(), "CalculateValidSkillTargetEntries");
                 if (calculate == null)
                 {
                     return;
                 }
 
-                calculate.Invoke(controller, new object[] { skillIds, false });
+
+                // triggerEvent=true keeps the entry list intact; passing false CLEARS it, which
+                // left the enemy (notably bosses) with no valid targets and froze their turn.
+                Probe.SuppressValidSkillsEvent = true;
+                try
+                {
+                    calculate.Invoke(controller, new object[] { skillIds, true });
+                }
+                finally
+                {
+                    Probe.SuppressValidSkillsEvent = false;
+                }
 
                 var entries = GetMember(controller, "m_SkillTargetEntries") as IEnumerable;
                 if (entries == null)
