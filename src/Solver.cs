@@ -2955,6 +2955,7 @@ namespace DSH.Foreseeker
                     && penalty > 0.01f)
                 {
                     row.Score -= penalty;
+                    row.TermRetal = -penalty;
                     row.Label += "  还手" + penalty.ToString("F1");
                 }
             }
