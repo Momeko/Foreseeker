@@ -159,6 +159,7 @@ namespace DSH.Foreseeker
         private bool _enemyIntentEnabled = true;
         private bool _randomTraceEnabled = false;
         private string _enemyIntent = string.Empty;
+        private string _enemyIntentKey;
         private string _playerStatus = string.Empty;
         private readonly List<string> _playerLines = new List<string>();
         private bool _predictVisible = false;
@@ -934,10 +935,9 @@ namespace DSH.Foreseeker
         /// </summary>
         private void UpdateEnemyIntent()
         {
-            _enemyIntent = string.Empty;
-
             if (!_enemyIntentEnabled || _lastSnapshot == null || !_lastSnapshot.InCombat)
             {
+                _enemyIntent = string.Empty;
                 return;
             }
 
@@ -945,6 +945,7 @@ namespace DSH.Foreseeker
             {
                 if (_liveOrder == null || _liveOrder.Count == 0)
                 {
+                    _enemyIntent = string.Empty;
                     return;
                 }
 
@@ -960,8 +961,20 @@ namespace DSH.Foreseeker
 
                 if (enemyGuid == 0)
                 {
+                    _enemyIntent = string.Empty;
                     return;
                 }
+
+                // The intent only changes when the turn does: recompute once per turn instead of
+                // poking the enemy controller every second.
+                string intentKey = _lastSnapshot.LiveRound + ":" + _lastSnapshot.LiveTurn + ":" + enemyGuid;
+                if (intentKey == _enemyIntentKey && !string.IsNullOrEmpty(_enemyIntent))
+                {
+                    return;
+                }
+
+                _enemyIntentKey = intentKey;
+                _enemyIntent = string.Empty;
 
                 ActorInstance enemy = GetActorInstance(enemyGuid);
                 if (enemy == null)
