@@ -160,6 +160,7 @@ namespace DSH.Foreseeker
         private bool _randomTraceEnabled = false;
         private string _enemyIntent = string.Empty;
         private string _enemyIntentKey;
+        private bool _predictStepsEnabled = false;
         private string _playerStatus = string.Empty;
         private readonly List<string> _playerLines = new List<string>();
         private bool _predictVisible = false;
@@ -1460,7 +1461,10 @@ namespace DSH.Foreseeker
             LogActualAction();
             LearnOffset();
             LogDiagnostics();
-            LogPredictSteps();
+                if (_predictStepsEnabled)
+                {
+                    LogPredictSteps();
+                }
         }
 
         private void EnsureLiveListeners()
@@ -2736,7 +2740,9 @@ namespace DSH.Foreseeker
                 MethodInfo calculate = controller == null ? null : FindMethod(controller.GetType(), "CalculateValidSkillTargetEntries");
                 Logger.LogInfo("PREDICT: calc method=" + (calculate == null ? "null" : "ok"));
 
-                if (calculate != null)
+                // Diagnostic only: never call into the controller here. Passing false CLEARS the
+                // enemy's valid-target list, which froze boss turns (god_face_your_failure).
+                if (false && calculate != null)
                 {
                     try
                     {
