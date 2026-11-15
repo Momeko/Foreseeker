@@ -175,6 +175,35 @@ namespace DSH.Foreseeker
             _lookaheadNext = 0f;
             _lookaheadPenalties.Clear();
         }
+        /// <summary>Bosses whose fight is simple enough for the sandbox to mirror (no phase tokens).</summary>
+        private static readonly HashSet<string> LookaheadAllowedBosses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "shared_shambler", "shared_collector"
+        };
+
+        private static readonly List<string> _bossClassIds = new List<string>();
+
+        /// <summary>True when the sandbox rehearsal must stay off for this fight.</summary>
+        internal static bool RehearsalBlocked
+        {
+            get
+            {
+                if (!_bossBattle)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < _bossClassIds.Count; i++)
+                {
+                    if (!LookaheadAllowedBosses.Contains(_bossClassIds[i]))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
         private static bool _bossBattle;
         private static int _debugTick;
 
@@ -216,11 +245,17 @@ namespace DSH.Foreseeker
                 }
 
                 var bosses = new List<string>();
+                _bossClassIds.Clear();
                 foreach (object enemy in TeamActors(1))
                 {
                     if (IsBoss(enemy))
                     {
-                        bosses.Add(ActorName(enemy) + "(" + DataId(GetMember(enemy, "m_ActorDataClass")) + ")");
+                        string bossId = DataId(GetMember(enemy, "m_ActorDataClass"));
+                        bosses.Add(ActorName(enemy) + "(" + bossId + ")");
+                        if (!string.IsNullOrEmpty(bossId))
+                        {
+                            _bossClassIds.Add(bossId);
+                        }
                     }
                 }
 
@@ -761,7 +796,7 @@ namespace DSH.Foreseeker
             }
 
             Rows.Sort((a, b) => b.Score.CompareTo(a.Score));
-            if (!_bossBattle)
+            if (!RehearsalBlocked)
             {
                 ApplyLookahead(actor, ToInt(GetMember(battle, "CurrentRound")),
                                ToInt(GetMember(battle, "CurrentTurn")), actorGuid);
@@ -773,7 +808,7 @@ namespace DSH.Foreseeker
             _header = "求解器 · " + name
                       + " · 第" + ToInt(GetMember(battle, "CurrentRound")) + "回合"
                       + " 第" + (ToInt(GetMember(battle, "CurrentTurn")) + 1) + "手"
-                      + " · " + plans + " 个选择 · 评分越高越好" + (_bossBattle ? "（Boss 战不做还手预演）" : string.Empty) + " · 按 F5 关闭";
+                      + " · " + plans + " 个选择 · 评分越高越好" + (RehearsalBlocked ? "（Boss 战不做还手预演）" : string.Empty) + " · 按 F5 关闭";
 
             ForetestLog.WriteDebug("DECIDE round=" + ToInt(GetMember(battle, "CurrentRound"))
                                                    + " turn=" + ToInt(GetMember(battle, "CurrentTurn"))

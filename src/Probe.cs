@@ -200,10 +200,10 @@ namespace DSH.Foreseeker
 
             if (string.Equals(to, "in_turn_select", StringComparison.OrdinalIgnoreCase))
             {
-                Emit("AUTOREQ seq=" + RandomTrace.TotalSeq + " boss=" + Solver.BossBattle);
+                Emit("AUTOREQ seq=" + RandomTrace.TotalSeq + " boss=" + Solver.BossBattle + " blocked=" + Solver.RehearsalBlocked);
 
                 // Boss fights carry tokens the sandbox cannot mirror: no rehearsal there.
-                if (!Solver.BossBattle)
+                if (!Solver.RehearsalBlocked)
                 {
                     SolverProbe.RequestAuto();
                     SimState.RequestAuto();
