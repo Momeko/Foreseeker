@@ -998,14 +998,24 @@ namespace DSH.Foreseeker
                 {
                     return;
                 }
-
                 MethodInfo calculate = FindMethod(controller.GetType(), "CalculateValidSkillTargetEntries");
                 if (calculate == null)
                 {
                     return;
                 }
 
-                calculate.Invoke(controller, new object[] { skillIds, false });
+
+                // triggerEvent=true keeps the entry list intact; passing false CLEARS it, which
+                // left the enemy (notably bosses) with no valid targets and froze their turn.
+                Probe.SuppressValidSkillsEvent = true;
+                try
+                {
+                    calculate.Invoke(controller, new object[] { skillIds, true });
+                }
+                finally
+                {
+                    Probe.SuppressValidSkillsEvent = false;
+                }
 
                 var entries = GetMember(controller, "m_SkillTargetEntries") as IEnumerable;
                 if (entries == null)
