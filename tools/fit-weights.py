@@ -15,7 +15,7 @@ import sys
 
 import numpy as np
 
-DECIDE_RE = re.compile(r"S DECIDE .*?actor=(?P<actor>.+?)(?: choices=|$)")
+DECIDE_RE = re.compile(r"S DECIDE round=(?P<round>\d+) turn=(?P<turn>\d+) actor=(?P<actor>.+?)(?: choices=|$)")
 FEAT_RE = re.compile(
     r"S FEAT (?P<skill>[^|]+)\|(?P<target>[^|]+)\|rank=(?P<rank>\d+)"
     r"\|dmg=(?P<dmg>-?[\d.]+)\|hp=(?P<hp>-?[\d.]+)\|kill=(?P<kill>-?[\d.]+)"
@@ -37,7 +37,10 @@ def parse_file(path):
             m = DECIDE_RE.search(line)
             block = {
                 "actor": m.group("actor").strip() if m else "?",
+                "round": int(m.group("round")) if m else -1,
+                "turn": int(m.group("turn")) if m else -1,
                 "excluded": "excluded=1" in line,
+                "file": path,
                 "rows": [],
             }
             continue
@@ -61,6 +64,17 @@ def parse_file(path):
     return decisions
 
 
+def dedupe(decisions):
+    """The same (turn, actor) can be logged repeatedly: keep the richest block."""
+    best = {}
+    for d in decisions:
+        key = (d.get("file"), d.get("round"), d.get("turn"), d.get("actor"))
+        cur = best.get(key)
+        if cur is None or len(d["rows"]) > len(cur["rows"]):
+            best[key] = d
+    return list(best.values())
+
+
 def usable(decision):
     if decision.get("excluded") or len(decision["rows"]) < 2:
         return False
@@ -82,13 +96,15 @@ def to_arrays(decision, drop_retal=True):
     return X, chosen[0]
 
 
-def ranks(decisions, w, drop_retal=True):
+def ranks(decisions, w, drop_retal=True, scale=None):
     top1 = top3 = covered = 0
     for d in decisions:
         arr = to_arrays(d, drop_retal)
         if arr is None:
             continue
         X, chosen = arr
+        if scale is not None:
+            X = (X - scale[0]) / scale[1]
         scores = X @ w
         order = np.argsort(-scores)
         rank = int(np.where(order == chosen)[0][0]) + 1
@@ -100,7 +116,7 @@ def ranks(decisions, w, drop_retal=True):
     return top1 / covered, top3 / covered, covered
 
 
-def fit(decisions, iters, lr, margin, l2, drop_retal=True):
+def fit(decisions, iters, lr, margin, l2, drop_retal=True, scale=None):
     w = PRIOR.copy()
     hist = []
     for it in range(iters):
@@ -111,6 +127,8 @@ def fit(decisions, iters, lr, margin, l2, drop_retal=True):
             if arr is None:
                 continue
             X, chosen = arr
+            if scale is not None:
+                X = (X - scale[0]) / scale[1]
             scores = X @ w
             # every other row must sit at least `margin` below the chosen one
             gaps = scores[chosen] - scores
@@ -145,6 +163,10 @@ def main():
     for path in files:
         all_decisions.extend(parse_file(path))
 
+    before = len(all_decisions)
+    all_decisions = dedupe(all_decisions)
+    print(f"after dedupe: {len(all_decisions)} (removed {before - len(all_decisions)} duplicate blocks)")
+
     usable_decisions = [d for d in all_decisions if usable(d)]
     print(f"files        : {len(files)}")
     print(f"decisions    : {len(all_decisions)}")
@@ -155,24 +177,38 @@ def main():
         print("not enough usable decisions to fit; collect more data first")
         return 2
 
+    # split by battle file so near-duplicate decisions cannot leak into the holdout
+    files_all = sorted({d.get("file") for d in usable_decisions})
     rng = np.random.default_rng(0)
-    idx = rng.permutation(len(usable_decisions))
-    cut = int(len(idx) * (1.0 - args.holdout))
-    train = [usable_decisions[i] for i in idx[:cut]]
-    test = [usable_decisions[i] for i in idx[cut:]]
+    shuffled = list(files_all)
+    rng.shuffle(shuffled)
+    cut_files = int(len(shuffled) * (1.0 - args.holdout))
+    train_files = set(shuffled[:cut_files])
+    train = [d for d in usable_decisions if d.get("file") in train_files]
+    test = [d for d in usable_decisions if d.get("file") not in train_files]
 
-    t1, t3, n = ranks(usable_decisions, PRIOR)
+    t1, t3, n = ranks(usable_decisions, PRIOR, scale=None)
     print(f"\nprior weights {PRIOR.tolist()}")
     print(f"  all data   top1={t1:.1%} top3={t3:.1%} n={n}")
 
-    w, hist = fit(train, args.iters, args.lr, args.margin, args.l2)
+    # standardise so features on different scales do not drown each other out
+    stacked = np.vstack([to_arrays(d)[0] for d in train if to_arrays(d) is not None])
+    mean = stacked.mean(axis=0)
+    std = stacked.std(axis=0)
+    std[std < 1e-6] = 1.0
+    scale = (mean, std)
+
+    w_scaled, hist = fit(train, args.iters, args.lr, args.margin, args.l2, scale=scale)
+    w = np.zeros_like(w_scaled)
+    nz = std > 1e-6
+    w[nz] = w_scaled[nz] / std[nz]
     print(f"\nfitted weights {np.round(w, 3).tolist()}")
 
-    t1, t3, n = ranks(train, w)
+    t1, t3, n = ranks(train, w, scale=scale)
     print(f"  train      top1={t1:.1%} top3={t3:.1%} n={n}")
-    t1, t3, n = ranks(test, w)
+    t1, t3, n = ranks(test, w, scale=scale)
     print(f"  holdout    top1={t1:.1%} top3={t3:.1%} n={n}")
-    t1, t3, n = ranks(test, PRIOR)
+    t1, t3, n = ranks(test, PRIOR, scale=scale)
     print(f"  holdout(prior) top1={t1:.1%} top3={t3:.1%} n={n}")
     return 0
 
