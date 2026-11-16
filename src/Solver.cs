@@ -61,6 +61,7 @@ namespace DSH.Foreseeker
             public float TgtHp;
             public float Threat;
             public float AllyDd;
+            public float ActsThisRound;
         }
 
         internal static void Refresh()
@@ -1012,6 +1013,7 @@ namespace DSH.Foreseeker
                          + "|v=2|tgtHp=" + row.TgtHp.ToString("0.00")
                          + "|threat=" + row.Threat.ToString("0.00")
                          + "|allyDd=" + row.AllyDd.ToString("0")
+                         + "|act=" + row.ActsThisRound.ToString("0")
                          + ((_battleExcluded || _excludedActorGuids.Contains(actorGuid)) ? "|excluded=1" : string.Empty));
                 }
             }
@@ -1197,7 +1199,8 @@ namespace DSH.Foreseeker
                 TermPos = positionDelta * 0.7f,
                 TgtHp = Mathf.Clamp01(hp / maxHp),
                 Threat = ThreatOf(targetGuid),
-                AllyDd = CountAlliesAtDeathsDoor()
+                AllyDd = CountAlliesAtDeathsDoor(),
+                ActsThisRound = ForeseekerPlugin.ActsThisRound(targetGuid) ? 1f : 0f
             };
         }
 

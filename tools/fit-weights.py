@@ -24,8 +24,8 @@ FEAT_RE = re.compile(
 )
 ACTUAL_RE = re.compile(r"S ACTUAL skill=(?P<skill>\S+)")
 
-FEATURES = ["hp", "kill", "eff", "pos", "retal", "tgtHp", "threat", "allyDd"]
-PRIOR = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0])
+FEATURES = ["hp", "kill", "eff", "pos", "retal", "tgtHp", "threat", "allyDd", "act"]
+PRIOR = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0])
 
 
 def parse_feat(line):
