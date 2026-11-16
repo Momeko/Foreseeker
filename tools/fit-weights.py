@@ -24,9 +24,32 @@ FEAT_RE = re.compile(
 )
 ACTUAL_RE = re.compile(r"S ACTUAL skill=(?P<skill>\S+)")
 
-FEATURES = ["hp", "kill", "eff", "pos", "retal"]
-PRIOR = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
+FEATURES = ["hp", "kill", "eff", "pos", "retal", "tgtHp", "threat", "allyDd"]
+PRIOR = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0])
 
+
+def parse_feat(line):
+    """Parses "S FEAT skill|target|k=v|..." into a row; unknown keys are ignored."""
+    try:
+        body = line.split("S FEAT ", 1)[1].strip()
+        parts = body.split("|")
+        if len(parts) < 3:
+            return None
+        skill, target = parts[0], parts[1]
+        kv = {}
+        for token in parts[2:]:
+            if "=" in token:
+                k, v = token.split("=", 1)
+                kv[k] = v
+        feat = [float(kv.get(name, 0.0)) for name in FEATURES]
+        return {
+            "skill": skill,
+            "target": target,
+            "rank": int(float(kv.get("rank", 0))),
+            "feat": feat,
+        }
+    except Exception:
+        return None
 
 def parse_file(path):
     """Returns a list of decisions: (actor, chosen_skill, rows) with rows as dicts."""
@@ -45,15 +68,9 @@ def parse_file(path):
             }
             continue
         if "S FEAT " in line and block is not None:
-            m = FEAT_RE.search(line)
-            if m:
-                block["rows"].append(
-                    {
-                        "skill": m.group("skill"),
-                        "rank": int(m.group("rank")),
-                        "feat": [float(m.group(k)) for k in FEATURES],
-                    }
-                )
+            parsed = parse_feat(line)
+            if parsed is not None:
+                block["rows"].append(parsed)
             continue
         if "S ACTUAL" in line and block is not None:
             m = ACTUAL_RE.search(line)
