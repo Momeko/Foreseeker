@@ -145,6 +145,14 @@ namespace DSH.Foreseeker
         private int _liveTurn = -1;
         private int _liveTotalTurns = -1;
         private List<uint> _liveOrder = new List<uint>();
+        /// <summary>Enemies still waiting to act this round (from QueryTurnOrder).</summary>
+        internal static readonly List<uint> LiveTurnOrder = new List<uint>();
+
+        internal static bool ActsThisRound(uint guid)
+        {
+            return guid != 0 && LiveTurnOrder.Contains(guid);
+        }
+
         private float _nextLivePoll;
         private float _nextListenerCheck;
         private bool _liveErrorLogged;
@@ -3093,6 +3101,11 @@ namespace DSH.Foreseeker
                 if (query != null && query.m_RemainingTurnOrder != null)
                 {
                     _liveOrder = query.m_RemainingTurnOrder;
+                    LiveTurnOrder.Clear();
+                    if (query.m_RemainingTurnOrder != null)
+                    {
+                        LiveTurnOrder.AddRange(query.m_RemainingTurnOrder);
+                    }
                 }
             }
             catch (Exception ex)
