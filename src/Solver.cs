@@ -58,6 +58,9 @@ namespace DSH.Foreseeker
             public float TermEffect;
             public float TermPos;
             public float TermRetal;
+            public float TgtHp;
+            public float Threat;
+            public float AllyDd;
         }
 
         internal static void Refresh()
@@ -1006,6 +1009,9 @@ namespace DSH.Foreseeker
                          + "|pos=" + row.TermPos.ToString("0.0")
                          + "|retal=" + row.TermRetal.ToString("0.0")
                          + "|score=" + row.Score.ToString("0.0")
+                         + "|v=2|tgtHp=" + row.TgtHp.ToString("0.00")
+                         + "|threat=" + row.Threat.ToString("0.00")
+                         + "|allyDd=" + row.AllyDd.ToString("0")
                          + ((_battleExcluded || _excludedActorGuids.Contains(actorGuid)) ? "|excluded=1" : string.Empty));
                 }
             }
@@ -1188,7 +1194,10 @@ namespace DSH.Foreseeker
                 TermHp = sign * HpLossCost(target, damage),
                 TermKill = trueKill ? (targetIsAlly ? -1000f : 30f) : 0f,
                 TermEffect = EffectValue(performer, actorResult, out effects),
-                TermPos = positionDelta * 0.7f
+                TermPos = positionDelta * 0.7f,
+                TgtHp = Mathf.Clamp01(hp / maxHp),
+                Threat = ThreatOf(targetGuid),
+                AllyDd = CountAlliesAtDeathsDoor()
             };
         }
 
@@ -2136,6 +2145,56 @@ namespace DSH.Foreseeker
 
             return Mathf.Clamp01(1f - resist);
         }
+
+        /// <summary>Predicted damage of this enemy, normalised by the victim's max HP.</summary>
+        private static float ThreatOf(uint attackerGuid)
+        {
+            try
+            {
+                float damage;
+                uint victimGuid;
+                if (!ForeseekerPlugin.PredictedDamage.TryGetValue(attackerGuid, out damage) || damage <= 0f)
+                {
+                    return 0f;
+                }
+
+                float victimMax = 1f;
+                if (ForeseekerPlugin.PredictedTarget.TryGetValue(attackerGuid, out victimGuid))
+                {
+                    object victim = Invoke(_teams, "GetActorFromActorGuid", victimGuid);
+                    victimMax = Mathf.Max(1f, Stat(victim, _healthMaxStat, "m_Hp"));
+                }
+
+                return damage / victimMax;
+            }
+            catch
+            {
+                return 0f;
+            }
+        }
+
+        /// <summary>How many of our heroes currently stand at death's door.</summary>
+        private static float CountAlliesAtDeathsDoor()
+        {
+            try
+            {
+                int count = 0;
+                foreach (object ally in TeamActors(0))
+                {
+                    if (IsAtDeathsDoor(ally))
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
+            }
+            catch
+            {
+                return 0f;
+            }
+        }
+
         private static bool IsAtDeathsDoor(object actor)
         {
             if (actor == null)
