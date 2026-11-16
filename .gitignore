@@ -7,3 +7,4 @@ src/bin/
 .vs/
 .idea/
 Thumbs.db
+__pycache__/
